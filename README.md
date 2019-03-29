@@ -17,17 +17,25 @@ But that's pretty far off.
 libraries used in this.
 
 stk, a useful library which provides tools for reading and filtering audio files.
+
 https://ccrma.stanford.edu/software/stk/index.html
 
-eigen, a useful library providing matrices 
+
+eigen, a useful library providing matrices
+
 https://bitbucket.org/eigen/eigen/
 
+
 kiss_fft, a nice library for computing fourier transforms, found at
+
 https://github.com/mborgerding/kissfft
 
 some code from Iowa Hills Software, found for "free" at
-http://www.iowahills.com/ 
-more specifically, the parts for creation of FIR filters 
+
+http://www.iowahills.com/
+
+more specifically, the parts for creation of FIR filters
+
 http://www.iowahills.com/A7ExampleCodePage.html
 
 Original code is from kiss_fft and Iowa Hills Software are respectively contained in "kissfft" and "Iowa_Hills_Source_Code_Kit" folders
