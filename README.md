@@ -15,8 +15,12 @@ If all that works, it would be cool to toy around with generating new song compo
 But that's pretty far off. 
 
 libraries used in this.
+
 stk, a useful library which provides tools for reading and filtering audio files.
 https://ccrma.stanford.edu/software/stk/index.html
+
+eigen, a useful library providing matrices 
+https://bitbucket.org/eigen/eigen/
 
 kiss_fft, a nice library for computing fourier transforms, found at
 https://github.com/mborgerding/kissfft
