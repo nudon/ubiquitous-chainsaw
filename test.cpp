@@ -23,6 +23,12 @@ void make_fir_bandpass_filter(double* coefs, int taps, int freq_center, int freq
 stk::Fir create_fir_from_coefs(double* coefs, int len);
 
 
+MatrixXf create_1d_gaussian_filter_col(int length, double amplitude, double stddev);
+
+MatrixXf create_1d_gaussian_filter_row(int length, double amplitude, double stddev);
+MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern);
+
+
 int main() {
   std::string file_in = "./sound/tsu.wav";
   std::string file_out = "./pet.wav";
@@ -61,21 +67,26 @@ void process_song(std::string fn_in, std::string fn_out) {
   //actualyl nfft should just be length of sample. is also the resulting frequency resolution.
 
 
-
-  FileWvOut filteredOut;
-  filteredOut.openFile("hi.wav", 2, FileWrite::FILE_WAV, Stk::STK_SINT16);
+  bool filter_test = false;
+  if (filter_test) {
+    FileWvOut filteredOut;
+    filteredOut.openFile("hi.wav", 2, FileWrite::FILE_WAV, Stk::STK_SINT16);
   
-  StkFrames slice(samples_per_slice, channels);
-  double coefs[30];
-  make_fir_bandpass_filter(coefs, 30, max_freq / 2, max_freq / 8, max_freq);
-  stk::Fir bp = create_fir_from_coefs(coefs, 30);
-  input.reset();
-  for (int slice_i = 0; slice_i < total_slices; slice_i++) {
-    input.tick(slice);
-    for (int chan_i = 0; chan_i < channels; chan_i++) {
-      bp.tick(slice, chan_i);
+    StkFrames slice(samples_per_slice, channels);
+    int taps = 60;
+    double coefs[taps];
+    make_fir_bandpass_filter(coefs, taps, max_freq / 2, max_freq / 64, max_freq);
+    stk::Fir bp = create_fir_from_coefs(coefs, taps);
+    input.reset();
+
+    for (int slice_i = 0; slice_i < total_slices; slice_i++) {
+      input.tick(slice);
+      for (int chan_i = 0; chan_i < channels; chan_i++) {
+	bp.tick(slice, chan_i);
+      }
+      filteredOut.tick( slice );
     }
-    filteredOut.tick( slice );
+    input.reset();
   }
 
 
@@ -84,6 +95,12 @@ void process_song(std::string fn_in, std::string fn_out) {
   //generate time-frequency distribution
   MatrixXf tfd = TFD_extract(input, nfft, total_slices, samples_per_slice, channels);
 
+  //test out convolution code
+  MatrixXf guass_col = create_1d_gaussian_filter_col(5, 1, 1);
+  MatrixXf guass_row = create_1d_gaussian_filter_row(5, 1, 1);
+  MatrixXf result = one_d_convolve(tfd, guass_col);
+  result = one_d_convolve(result, guass_row);
+  
   /// close files
   song.close();
   input.closeFile();
@@ -106,8 +123,8 @@ MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per
   StkFrames slice(samples_per_slice, channels);
   StkFrames single_chan(samples_per_slice, 1);
 
-  MatrixXf tfd = MatrixXf(total_slices, freq_chunks); 
-  tfd.Zero(total_slices, freq_chunks);
+  MatrixXf tfd = MatrixXf(freq_chunks, total_slices); 
+  tfd.Zero(freq_chunks, total_slices);
   for (int slice_i = 0; slice_i < total_slices; slice_i++) {
     input.tick(slice);
     for (int i = 0; i < channels; i++) {
@@ -123,7 +140,7 @@ MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per
 	  std::cout << modulus << " ";
 	  }
 	//plus equals to get both channels
-	tfd(slice_i,freq_i) += modulus;
+	tfd(freq_i, slice_i) += modulus;
       }
       if (print) {
 	std::cout << "\n";
@@ -180,12 +197,32 @@ stk::Fir create_1d_gaussian_filter(int length, double amplitude, double center, 
   return ret;
 }
 
+MatrixXf create_1d_gaussian_filter_col(int length, double amplitude, double stddev) {
+  MatrixXf kern (1, length);
+  float val = 0;
+  double exp = 0;
+  double center = (double)length / 2;
+  for (int i = 0; i < length; i++) {
+    exp = -1 * pow(i - center, 2) / stddev;
+    val = amplitude * pow(M_E, exp);
+    kern(0,i) = val;
+  }
+  return kern;;
+}
+
+MatrixXf create_1d_gaussian_filter_row(int length, double amplitude, double stddev) {
+  return create_1d_gaussian_filter_col(length, amplitude, stddev).transpose();
+}
+
 
 void make_fir_bandpass_filter(double* coefs, int taps, int freq_center, int freq_margin,  int max_freq) {
   double rel_center = (double)freq_center / max_freq;
   double rel_margin = (double)freq_margin / max_freq;
   TFIRPassTypes band = firBPF;
+  TWindowType wt = wtSINC;
+  double some_window_param = 10;
   RectWinFIR(coefs, taps, band, rel_center, rel_margin);
+  FIRFilterWindow(coefs, taps, wt, some_window_param);
 }
 
 stk::Fir create_fir_from_coefs(double* coefs, int len) {
@@ -197,4 +234,49 @@ stk::Fir create_fir_from_coefs(double* coefs, int len) {
   }
   Fir ret (kernel);
   return ret;
+}
+
+MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
+  //perform valid 1d convolution on matrix
+  //or cross-corelation, planning on using symetric kernels so doesn't matter
+  int res_dim;
+  int kern_dim = -1;
+  MatrixXf temp, result;
+  int d_start, d_end, d_width;
+  
+  if (kern.rows() == 1) {
+    result = MatrixXf(mat.rows(), mat.cols() - (kern.cols() - 1));
+    result.Zero(result.rows(), result.cols());
+    res_dim = result.cols();
+    d_width = mat.rows();
+    kern_dim = kern.cols();
+    for (int i = 0; i < kern_dim; i++) {
+      d_start = i;
+      d_end = res_dim;
+      temp = mat.block(0,d_start, d_width, d_end);
+      temp = temp * kern(0,i);
+      result += temp;
+    }
+  }
+  else if (kern.cols() == 1) {
+    result = MatrixXf(mat.rows() - (kern.rows() - 1), mat.cols());
+    result.Zero(result.rows(), result.cols());
+    res_dim = result.rows();
+    d_width = mat.cols();
+    kern_dim = kern.rows();
+    for (int i = 0; i < kern_dim; i++) {
+      d_start = i;
+      d_end = res_dim;
+      temp = mat.block(d_start, 0, d_end, d_width);
+      temp = temp * kern(i, 0);
+      result += temp;
+    }
+  }
+  else {
+    //error, kernel is not 1d
+  }
+  if (kern_dim % 2 == 0) {
+    //kernel has even dim and doesn't have a perfect center index, funky stuff may happen
+  }
+  return result;
 }
