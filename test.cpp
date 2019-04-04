@@ -5,28 +5,41 @@
 #include <string.h>
 #include <math.h>
 #include <vector>
+#include <Eigen/Eigen>
 #include <Eigen/Dense>
 
 #include "kiss_fftr.h"
 #include "FIRFilterCode.h"
+#include "eigen_to_image.h"
+
+#include "ChunkStats.h"
 using namespace stk;
+
 using Eigen::MatrixXf;
+using Eigen::MatrixXi;
 
-
+//main test
 void process_song(std::string fn_in, std::string fn_out);
+
+//thing with fourier transform
 MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per_slice, int channels);
 void TFDI_extract(kiss_fft_cpx* fft_input, int nfft, int samples_per_slice, StkFrames output);
 
-stk::Fir create_1d_gaussian_filter(int length, double amplitude, double center, double stddev);
 
+//filtering methods
+//using stk
 void make_fir_bandpass_filter(double* coefs, int taps, int freq_center, int freq_margin,  int max_freq);
 stk::Fir create_fir_from_coefs(double* coefs, int len);
-
-
+stk::Fir create_1d_gaussian_filter(int length, double amplitude, double center, double stddev);
+//using eigen
 MatrixXf create_1d_gaussian_filter_col(int length, double amplitude, double stddev);
-
 MatrixXf create_1d_gaussian_filter_row(int length, double amplitude, double stddev);
 MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern);
+MatrixXf dog(MatrixXf full, MatrixXf gauss);
+
+//chunking functions
+double snaz(MatrixXf filt, int snazr);
+MatrixXi chunkify(MatrixXf tfd, int vert_range, int horz_range);
 
 
 int main() {
@@ -94,26 +107,62 @@ void process_song(std::string fn_in, std::string fn_out) {
 
   //generate time-frequency distribution
   MatrixXf tfd = TFD_extract(input, nfft, total_slices, samples_per_slice, channels);
-
+  
+  write_eigen_to_file("some_spectogram.png", tfd);
   //test out convolution code
-  MatrixXf guass_col = create_1d_gaussian_filter_col(5, 1, 1);
-  MatrixXf guass_row = create_1d_gaussian_filter_row(5, 1, 1);
+  MatrixXf guass_col = create_1d_gaussian_filter_col(16, 1, 1);
+  MatrixXf guass_row = create_1d_gaussian_filter_row(16, 1, 1);
+  MatrixXf sobel_x (1,3);
+  MatrixXf sobel_y (3,1);
+  //3x3 sobels but I only implemented 1d convolution :(
+  //sobel_x << -1, 0, 1, -3, 0, 3, -1, 0, 1;
+  //sobel_y << -1, -3, -1, 0, 0, 0, 1, 3, 1;
+  sobel_x << -1, 0, 1;
+  sobel_y << -1, 0, 1;
+
+  MatrixXf tfd_y = one_d_convolve(tfd, sobel_y);
+  MatrixXf tfd_x = one_d_convolve(tfd, sobel_x);
+
+  write_eigen_to_file("y_sobel_spectogram.png", tfd_y);
+  write_eigen_to_file("x_sobel_spectogram.png", tfd_x);
+  
+  
+  MatrixXf sobel = one_d_convolve(tfd, sobel_y);
+  sobel = one_d_convolve(sobel, sobel_x);
+  write_eigen_to_file("abs_sobel_spectogram.png", sobel);
+  
+  //chunkify(sobel, 1,2);
+
   MatrixXf result = one_d_convolve(tfd, guass_col);
   result = one_d_convolve(result, guass_row);
+  write_eigen_to_file("gauss_spectogram.png", result);
+  MatrixXf dogg = dog(tfd, result);
+  write_eigen_to_file("dog_spectogram.png", dogg);
+
+  MatrixXf x_sobeled_dog = one_d_convolve(dogg, sobel_x);
+  MatrixXf y_sobeled_dog = one_d_convolve(dogg, sobel_y);
   
-  /// close files
+  write_eigen_to_file("x_sobel_dog_spectogram.png", x_sobeled_dog * 100);
+  write_eigen_to_file("y_sobel_dog_spectogram.png", y_sobeled_dog * 100);
+  MatrixXi chunk_ids = chunkify(y_sobeled_dog, 1,2);
+  //MatrixXi stats = chunk_stats(chunk_ids);
+  ChunkStats stats = ChunkStats(chunk_ids);
+  
+						    
+    /// close files
   song.close();
   input.closeFile();
   output.closeFile();
 }
 
-
 //extract the time-frequency distribution of a song
 //going to have it return eigen 
 MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per_slice, int channels) {
   bool is_inverse = false;
-  //numbe of binds fft puts things into. apparently it's the same as nfft. 
-  int freq_chunks = nfft;
+  //numbe of binds fft puts things into. apparently it's the same as nfft.
+  //since nothing is placed in the upper half, divide by 2
+  //though if you want to play around with inverse fft, just set to nfft I think?
+  int freq_chunks = nfft / 2;
   kiss_fftr_cfg cfg = kiss_fftr_alloc( nfft ,is_inverse,0,0 );
   size_t input_size = sizeof(kiss_fft_scalar) * samples_per_slice;
   size_t output_size = sizeof(kiss_fft_cpx) * freq_chunks;
@@ -124,7 +173,7 @@ MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per
   StkFrames single_chan(samples_per_slice, 1);
 
   MatrixXf tfd = MatrixXf(freq_chunks, total_slices); 
-  tfd.Zero(freq_chunks, total_slices);
+  tfd.setZero();
   for (int slice_i = 0; slice_i < total_slices; slice_i++) {
     input.tick(slice);
     for (int i = 0; i < channels; i++) {
@@ -138,7 +187,7 @@ MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per
 	double modulus =  pow(a.r, 2) + pow(a.i, 2);
 	if (print) {
 	  std::cout << modulus << " ";
-	  }
+	}
 	//plus equals to get both channels
 	tfd(freq_i, slice_i) += modulus;
       }
@@ -147,6 +196,7 @@ MatrixXf TFD_extract(FileWvIn input, int nfft, int total_slices, int samples_per
       }
     }
   }
+  std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
   kiss_fftr_free(cfg);
   return tfd;
 }
@@ -246,7 +296,7 @@ MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
   
   if (kern.rows() == 1) {
     result = MatrixXf(mat.rows(), mat.cols() - (kern.cols() - 1));
-    result.Zero(result.rows(), result.cols());
+    result.setZero();
     res_dim = result.cols();
     d_width = mat.rows();
     kern_dim = kern.cols();
@@ -254,13 +304,12 @@ MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
       d_start = i;
       d_end = res_dim;
       temp = mat.block(0,d_start, d_width, d_end);
-      temp = temp * kern(0,i);
-      result += temp;
+      result += temp * kern(0,i);
     }
   }
   else if (kern.cols() == 1) {
     result = MatrixXf(mat.rows() - (kern.rows() - 1), mat.cols());
-    result.Zero(result.rows(), result.cols());
+    result.setZero();
     res_dim = result.rows();
     d_width = mat.cols();
     kern_dim = kern.rows();
@@ -268,8 +317,7 @@ MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
       d_start = i;
       d_end = res_dim;
       temp = mat.block(d_start, 0, d_end, d_width);
-      temp = temp * kern(i, 0);
-      result += temp;
+      result += temp * kern(i, 0);
     }
   }
   else {
@@ -279,4 +327,136 @@ MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
     //kernel has even dim and doesn't have a perfect center index, funky stuff may happen
   }
   return result;
+}
+
+
+MatrixXf dog(MatrixXf full, MatrixXf gauss) {
+  int f_rows = full.rows();
+  int f_cols = full.cols();
+  int g_rows = gauss.rows();
+  int g_cols = gauss.cols();
+  if (f_rows == g_rows && f_cols == g_cols) {
+    return full - gauss;
+  }
+  else {
+    MatrixXf temp = full.block((f_rows - g_rows) / 2, (f_cols - g_cols) / 2, g_rows, g_cols);
+    temp = temp - gauss;
+    return temp.cwiseAbs();
+  }
+}
+
+//stands for sub nonzero-average zeroing
+//take average of all non-zero elements, zero anything below average
+//takes matrix and rounds to apply snaz, zeros values in matrix
+//returns average of penultimate round
+//having snazr as anything above 1 is typically excessive, consider at most using 2
+double snaz(MatrixXf filt, int snazr) {
+  int freq_range = filt.rows();
+  int time_range = filt.cols();
+  double nz_tot = 0;
+  double nz_avg = 0;
+  int nz_count = 0;
+  float val = 0;
+  for (int i = 0; i <= snazr; i++) {
+    nz_tot = 0;
+    nz_count = 0;
+    //don't want to include zeros in average, can't use builtin sum methods, have to traverse :(
+    //combined two tasks in one, do the sub_average zeroing then compute new average
+    //need to to 1 final loop after outermost for loop finishes to do final sub_average zeroing
+    //accomplished by using i <= snazr and only recomputing nz_avg if i < snazr
+    for (int freq_i = 0; freq_i < freq_range; freq_i++) {
+      for (int time_i = 0; time_i < time_range; time_i++) {
+	val = filt(freq_i, time_i);
+	if (val < nz_avg) {
+	  filt(freq_i, time_i) = 0.0;
+	}
+	else {
+	  if (i < snazr) {
+	    nz_tot += val;
+	    nz_count++;
+	  }
+	}
+      }
+    }
+    if (i < snazr) {
+      nz_avg = nz_tot / nz_count;
+      std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
+    }
+  }
+  return nz_avg;
+}
+
+MatrixXi chunkify(MatrixXf tfd, int vert_range, int horz_range) {
+  //chunkify the input matrix
+  //defining chunkify as assign groups of sound in tfd that are signifigant together
+  //do this by locally grouping cells within proximity in matrix
+  //output is a new matrix, same dimensions, values are positive intergers
+  //zero indicated cell wasn't assigned a chunk
+  //positive integer represents some group id to which the cell got assigned to
+  int chunk_id = 0;
+  int freq_range = tfd.rows();
+  int time_range = tfd.cols();
+  int temp_i = -1;
+  int temp = 0;
+  float nz_avg = 0;
+  MatrixXf filt (freq_range, time_range);
+  MatrixXi chunk_ids (freq_range, time_range);
+  filt << tfd;
+  chunk_ids.setZero( );
+  //threshold values < average to zero
+  //do this to not care about very minor sounds
+  //sub-nonzero-average-zeroing rounds
+  nz_avg = snaz(filt, 1);
+  
+  //isn't a perfect grouping algorithim, since the local grouping is kind of naive
+  //hoping further culling methods down the line will get rid of bad groups
+  //but loop could be improved by having a more robust/expensive joining loop(s)
+  for (int time_i = 0; time_i < time_range; time_i++) {
+    for (int freq_i = 0; freq_i < freq_range; freq_i++) {
+      if (filt(freq_i, time_i) > 0) {
+	//check if you want to join it vertically
+	for (int freq_off = 1; freq_off <= vert_range; freq_off++) {
+	  //group into chunks within freq_off indexes below current cell 
+	  temp_i = freq_i - freq_off;
+	  if (temp_i >= 0) {
+	    temp = chunk_ids(temp_i, time_i);
+	    if (temp != 0) {
+	      chunk_ids(freq_i, time_i) = temp;
+	      break;
+	    }
+	  }
+	  else {
+	    break;
+	  }
+	}
+	//check if you want to join it horizontally, potentially overwriting vertical joins
+	for (int time_off = 1; time_off <= horz_range; time_off++) {
+	  temp_i = time_i - time_off;
+	  if (temp_i >= 0) {
+	    temp = chunk_ids(freq_i, temp_i);
+	    if (temp != 0) {
+	      chunk_ids(freq_i, time_i) = temp;
+	      break;
+	    }
+	  }
+	  else {
+	    break;
+	  }
+	}
+	//else assigning to a new group
+	if (chunk_ids(freq_i, time_i) == 0) {
+	  chunk_ids(freq_i, time_i) = ++chunk_id;
+	}
+      }
+    }
+  }
+  //basic error checking, making sure sufficiently low values aren't being assigned chunk_ids
+  for (int time_i = 0; time_i < time_range; time_i++) {
+    for (int freq_i = 0; freq_i < freq_range; freq_i++) {
+      if (chunk_ids(freq_i, time_i) != 00 && filt(freq_i, time_i) < nz_avg) {
+	std::cout << filt(freq_i, time_i) <<  "bad! ";
+      }
+    }
+  }
+  return chunk_ids;
 }

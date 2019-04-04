@@ -2,6 +2,7 @@ CC = g++
 MATH_LINK = -lm
 
 EIGEN_CONFIG = `pkg-config --cflags eigen3`
+FT_CONFIG = `pkg-config --cflags --libs freetype2`
 
 STK_LINK = -lstk
 STK_PATH = -I/usr/include/stk/
@@ -18,19 +19,33 @@ IHILLS_PATH = "-I"$(IHILLS_DIR)
 IHILLS_FILTER_TARGET = filter_objects
 IHILLS_OBJECTS = $(IHILLS_DIR)FIRFilterCode.o $(IHILLS_DIR)FFTCode.o
 
+PNGWRITER_PLEASE =  -lpng -L./png/ -lPNGwriter
 
 TOT_PATH = $(IHILLS_PATH) $(KISSFFT_PATH) $(STK_PATH)
-TOT_LINK = $(MATH_LINK) $(STK_LINK) 
+TOT_LINK = $(MATH_LINK) $(STK_LINK) $(PNGWRITER_PLEASE)
 
-COMP_FLAGS = -Wall -g $(EIGEN_CONFIG)
+COMP_FLAGS = -Wall -g $(EIGEN_CONFIG) 
 TARGET = test
-ALLOBJ = test.o $(KISSFFT_OBJECTS) $(IHILLS_OBJECTS)
+ALLOBJ = test.o eigen_to_image.o ChunkStats.o $(KISSFFT_OBJECTS) $(IHILLS_OBJECTS)
 
-all: $(ALLOBJ)
+all: $(ALLOBJ) dumby_eigen_to_image
 	$(CC) $(COMP_FLAGS) $(ALLOBJ) $(TOT_LINK) -o $(TARGET)
+
+#alternative build which outputs picture to build, required a wonky configuration on my end to work
+#also seems to only output picture to root project dir
+picture: $(ALLOBJ) working_eigen_to_image
+	$(CC) $(COMP_FLAGS) $(ALLOBJ) $(TOT_LINK) -o $(TARGET)
+
 
 test.o: test.cpp
 	$(CC) $(COMP_FLAGS) -c test.cpp $(TOT_PATH)
+
+dumby_eigen_to_image: eigen_to_image.cpp
+	$(CC) $(COMP_FLAGS) -c $< $(TOT_PATH)
+
+working_eigen_to_image: eigen_to_image.cpp
+	echo "expect picture output to clog the project dir"
+	$(CC) $(COMP_FLAGS)  -D PICTURE -c $< $(TOT_PATH)
 
 $(KISSFFT_OBJECTS):
 	cd $(KISSFFT_DIR) && make $(KISSFFT_TARGET)
@@ -39,7 +54,7 @@ $(IHILLS_OBJECTS):
 	cd $(IHILLS_DIR) && make $(IHILLS_FILTER_TARGET)
 
 %.o : %.cpp
-	$(CC) -c $<
+	$(CC) $(COMP_FLAGS) -c $< $(TOT_PATH)
 clean:
 	cd $(KISSFFT_DIR) && make clean
 	cd $(IHILLS_DIR) && make clean                  	
