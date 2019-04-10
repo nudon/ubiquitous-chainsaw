@@ -13,10 +13,12 @@
 #include "eigen_to_image.h"
 
 #include "ChunkStats.h"
+#include "Chunk.h"
 using namespace stk;
 
 using Eigen::MatrixXf;
 using Eigen::MatrixXi;
+using std::list;
 
 //main test
 void process_song(std::string fn_in, std::string fn_out);
@@ -40,7 +42,8 @@ MatrixXf dog(MatrixXf full, MatrixXf gauss);
 //chunking functions
 double snaz(MatrixXf filt, int snazr);
 MatrixXi chunkify(MatrixXf tfd, int vert_range, int horz_range);
-
+//list(Chunk) cull_chunks(MatrixXi chunk_ids, ChunkStats stats)
+list<Chunk> cull_chunks(ChunkStats stats);
 
 int main() {
   std::string file_in = "./sound/tsu.wav";
@@ -67,7 +70,7 @@ void process_song(std::string fn_in, std::string fn_out) {
   long samples_length = samples / channels;
   double file_rate = input.getFileRate();
   double len_in_sec = samples_length / file_rate;
-  
+   
   
   
   int samples_per_slice = 1024;
@@ -144,10 +147,19 @@ void process_song(std::string fn_in, std::string fn_out) {
   
   write_eigen_to_file("x_sobel_dog_spectogram.png", x_sobeled_dog * 100);
   write_eigen_to_file("y_sobel_dog_spectogram.png", y_sobeled_dog * 100);
-  MatrixXi chunk_ids = chunkify(y_sobeled_dog, 1,2);
+  int vert = 1;
+  int horz = 2;
+  MatrixXi chunk_ids = chunkify(y_sobeled_dog, vert,horz);
   //MatrixXi stats = chunk_stats(chunk_ids);
   ChunkStats stats = ChunkStats(chunk_ids);
-  
+  list<Chunk> y_imps = cull_chunks(stats);
+  chunk_ids = chunkify(x_sobeled_dog, vert,horz);
+  stats = ChunkStats(chunk_ids);
+  list<Chunk> x_imps = cull_chunks(stats);
+  list<Chunk> all_imps;
+  all_imps.insert(all_imps.begin(), x_imps.begin(), x_imps.end());
+  all_imps.insert(all_imps.begin(), y_imps.begin(), y_imps.end());
+  std::cout << "length of joined list is " << all_imps.size() << "\n";
 						    
     /// close files
   song.close();
@@ -413,7 +425,7 @@ MatrixXi chunkify(MatrixXf tfd, int vert_range, int horz_range) {
   //but loop could be improved by having a more robust/expensive joining loop(s)
   for (int time_i = 0; time_i < time_range; time_i++) {
     for (int freq_i = 0; freq_i < freq_range; freq_i++) {
-      if (filt(freq_i, time_i) > 0) {
+      if (filt(freq_i, time_i) > nz_avg) {
 	//check if you want to join it vertically
 	for (int freq_off = 1; freq_off <= vert_range; freq_off++) {
 	  //group into chunks within freq_off indexes below current cell 
@@ -459,4 +471,37 @@ MatrixXi chunkify(MatrixXf tfd, int vert_range, int horz_range) {
     }
   }
   return chunk_ids;
+}
+
+list<Chunk> cull_chunks(ChunkStats stats) {
+  //wait I don't even need the chunkids anymore 
+  
+  //thinking of returning a linked list of chunk objects
+  //because working with matrixes will probably be annoying past this point
+
+
+  list<Chunk> chunk_list;
+  MatrixXi sizes = stats.get_size();
+  int chunks = sizes.rows();
+  //ignoring chunk_id 0
+  sizes = stats.get_size().block(1,0, chunks - 1,1);
+  chunks = sizes.rows();
+
+  double average_size = (float)sizes.sum() / sizes.sum();
+  MatrixXi minf = stats.get_min_freq();
+  MatrixXi maxf = stats.get_max_freq();
+  MatrixXi mint = stats.get_min_time();
+  MatrixXi maxt = stats.get_max_time();
+  int chunk_count = 0;
+  for (int i = 0; i < chunks; i++) {
+    if (sizes(i) > average_size) {
+      //gather min, max, delta of time and frequency, construct a chunk
+      //find a better name for chunks to many things have chunk in the name
+      chunk_count++;
+      Chunk temp = Chunk(minf(i), maxf(i), mint(i), maxt(i));
+      chunk_list.insert(chunk_list.begin(), temp);
+    }
+  }
+  std::cout << "original size was " << chunks << " culled size is " << chunk_count << "\n";
+  return chunk_list; 
 }

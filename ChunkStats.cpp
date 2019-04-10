@@ -14,7 +14,6 @@ MatrixXi ChunkStats::make_stats(MatrixXi chunk_ids) {
   int ci = 0, ri = 0;
   chunk_ids.maxCoeff(&ri, &ci);
   int num_chunks = chunk_ids(ri, ci);
-  std::cout << num_chunks << " many chunks! \n";
   //potentially construct this to be row_major
   MatrixXi stats = MatrixXi::Constant(num_chunks + 1, stat_fields, -1);
   stats.col(chunk_size_i) = MatrixXi::Constant(num_chunks + 1, 1, 0);
@@ -38,37 +37,42 @@ MatrixXi ChunkStats::make_stats(MatrixXi chunk_ids) {
     }
   }
   stats.col(chunk_size_i).minCoeff(&ri);
-  std::cout << "smallest size is " << stats(ri, chunk_size_i) << "\n";
   return stats;
 }
 
-MatrixXi ChunkStats::get_size() {
-  return stats.col(chunk_size_i);
+std::list<Chunk> ChunkStats::cull_chunks() {
+  //wait I don't even need the chunkids anymore 
+  
+  //thinking of returning a linked list of chunk objects
+  //because working with matrixes will probably be annoying past this point
+
+
+  std::list<Chunk> chunk_list;
+  MatrixXi sizes = get_size();
+  int chunks = sizes.rows();
+  //ignoring chunk_id 0
+  sizes = get_size().block(1,0, chunks - 1,1);
+  chunks = sizes.rows();
+
+  double average_size = (float)sizes.sum() / sizes.sum();
+  MatrixXi minf = get_min_freq();
+  MatrixXi maxf = get_max_freq();
+  MatrixXi mint = get_min_time();
+  MatrixXi maxt = get_max_time();
+  int chunk_count = 0;
+  for (int i = 0; i < chunks; i++) {
+    if (sizes(i) > average_size) {
+      //gather min, max, delta of time and frequency, construct a chunk
+      //find a better name for chunks to many things have chunk in the name
+      chunk_count++;
+      Chunk temp = Chunk(minf(i), maxf(i), mint(i), maxt(i));
+      chunk_list.insert(chunk_list.begin(), temp);
+    }
+  }
+  std::cout << "original size was " << chunks << " culled size is " << chunk_count << "\n";
+  return chunk_list; 
 }
 
-MatrixXi ChunkStats::get_min_freq() {
-  return stats.col(min_freq_i);
-}
-
-MatrixXi ChunkStats::get_max_freq() {
-  return stats.col(max_freq_i);
-}
-
-MatrixXi ChunkStats::get_min_time() {
-  return stats.col(min_time_i);
-}
-
-MatrixXi ChunkStats::get_max_time(){
-  return stats.col(max_time_i);
-}
-
-MatrixXi ChunkStats::get_delta_freq() {
-  return get_max_freq() - get_min_freq();
-}
-
-MatrixXi ChunkStats::get_delta_time() {
-  return get_max_time() - get_min_time();
-}
 
 
 const int ChunkStats::stat_fields = 5;
