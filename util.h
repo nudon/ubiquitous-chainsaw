@@ -11,7 +11,9 @@
 
 
 //thing with fourier transform
-Eigen::MatrixXf TFD_extract(stk::FileWvIn input, int total_slices, int samples_per_slice, int channels);
+Eigen::MatrixXf TFD_extract(stk::FileWvIn &input, int total_slices, int samples_per_slice, int channels);
+Eigen::MatrixXf noread_TFD_extract(int total_slices, int samples_per_slice, int channels);
+Eigen::MatrixXf filename_TFD_extract(std::string fn, int total_slices, int samples_per_slice, int channels);
 
 //filtering methods
 //using stk

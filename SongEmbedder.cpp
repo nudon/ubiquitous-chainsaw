@@ -11,11 +11,14 @@
 using std::list;
 using Eigen::MatrixXf;
 using Eigen::MatrixXi;
+using stk::FileWvIn;
+using stk::FileWvOut;
+using stk::StkFrames;
 
 list<Chunk> make_chunks(int samples_per_slice, Song input);
 std::pair<MatrixXf, MatrixXf> filter(MatrixXf input);
 MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range);
-std::list<Chunk> get_important_chunks(MatrixXi chunks);
+list<Chunk> get_important_chunks(MatrixXi chunks);
 
 SongEmbedder::SongEmbedder(Song src, Song dst) {
   reciptor = src;
@@ -32,33 +35,22 @@ void SongEmbedder::funk() {
     list<Chunk> reciptor_chunks = make_chunks(samples_per_slice, reciptor);
     list<Chunk> replacer_chunks = make_chunks(samples_per_slice, replacer);
 
-    //construct a comparer
-    //weights for frequency center, frequency margin, and time maring
-    ChunkCompare comp (1,1,1);
-    
-    //iterate over 1 chunk list, create and fill a bunch of match structs
-    list<ChunkMatch> matches;
-    ChunkMatch a_match;
-    for (Chunk a_chunk : reciptor_chunks) {
-      a_match = ChunkMatch(a_chunk);
-      a_match.best_match_chunk(replacer_chunks, comp);
-      matches.insert(matches.begin(), a_match);
+
+    list<ChunkMatch>matches = get_matches(reciptor_chunks, replacer_chunks);
+
+    list<ChunkMatch> active_start;
+    list<ChunkMatch> active_end;
+    for (ChunkMatch a_match : matches) {
+      active_start.push_front(a_match);
+      active_end.push_front(a_match);
     }
-    
-    //then, need to mix in matches into an output file
-    
-    //get start/end times for when chunk needs to be mixed into output
-    
-    //have 2 sorted lists of chunks based on start/end times
-    
-    //have some container of active chunks
-    
-    //if current time slice == first in start time, move chunk from starttimelist into active chunks, repeat until bool condition evals to false
-    
-    //then, for each thing in active chunks, take input tick, apply a filter to extract a part of each active chunk, mix/sum into some output tick
-    
-    //then check if time slice == first in end time. if true, remove chunk from active_chunks and endtimelist, repeat until bool evals to false
-    std::cout << "made it to the end!";
+
+    active_start.sort(ChunkMatch::comp_active_start);
+    active_end.sort(ChunkMatch::comp_active_end);
+
+    std::string fn = "muxed";
+    output_remix(samples_per_slice, active_start, active_end, fn);
+    std::cout << "made it to the end!\n";
   }
   else {
     //ERROR
@@ -121,7 +113,7 @@ MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range) {
   chunk_ids.setZero( );
   //threshold values < average to zero
   //do this to not care about very minor sounds
-  nz_avg = snaz(filt, 1);
+  nz_avg = snaz(filt, 2);
   
   //isn't a perfect grouping algorithim, since the local grouping is kind of naive
   //hoping further culling methods down the line will get rid of bad groups
@@ -182,4 +174,96 @@ MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range) {
 std::list<Chunk> get_important_chunks(MatrixXi chunks) {
   ChunkStats stats (chunks);
   return stats.cull_chunks();
+}
+
+
+list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> reciptor_chunks, list<Chunk> replacer_chunks) {
+  //construct a comparer
+  //weights for frequency center, frequency margin, and time maring
+
+  ChunkCompare comp (1,1,1);
+  list<ChunkMatch> matches;
+  ChunkMatch a_match;
+  std::cout << "matching sound chunks! This may take a while.\n";
+  int count = 0;
+  int tot = reciptor_chunks.size();
+  for (Chunk a_chunk : reciptor_chunks) {
+    a_match = ChunkMatch(a_chunk);
+    a_match.best_match_chunk(replacer_chunks, comp);
+    matches.insert(matches.begin(), a_match);
+    //std::cout << "out of " << tot << " matches completed " << ++count << "\n";
+  }
+  std::cout << "Done with matching!\n";
+  return matches;
+}
+
+
+void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> active_start, list<ChunkMatch> active_end, std::string fn) {
+  int new_slices = reciptor.get_samples_per_channel() / samples_per_slice;
+  int channels = reciptor.get_channels();
+  float offset = -1;
+  FileWvIn sample_src;
+  FileWvOut output;
+  StkFrames frame_in (samples_per_slice, channels);
+  StkFrames frame_out (samples_per_slice, channels);
+  StkFrames filt_frames (samples_per_slice,1);
+  StkFrames temp_frames (samples_per_slice,1);
+  StkFrames zero (0, samples_per_slice, channels);
+    
+  sample_src.openFile(replacer.get_file_name());
+  output.openFile("muxed.wav", channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
+  bool print_some_samples = false;
+  //could also be a hash map
+  list<ChunkMatch> active_chunks;
+  for (int i = 0; i < new_slices; i++) {
+    //add newly activated chunks
+    while(active_start.size() > 0 && active_start.front().get_active_start() <= i) {
+      active_chunks.insert(active_chunks.begin(), active_start.front());
+      active_start.pop_front();
+    }   
+    //take active chunks, apply filter to replacer at specified time
+    //sum into some output
+    frame_out *= zero;
+    for (ChunkMatch chunk_match : active_chunks) {
+      Chunk match = chunk_match.get_match_chunk();
+      ChunkFilter filt = match.get_filter();
+      sample_src.reset();
+      //need to find time offset into other file
+      //offset into chunk + start of chunk in sample_src
+      offset = (i - chunk_match.get_active_start()) + (match.get_time_center() - match.get_time_margin());
+      offset *= samples_per_slice;
+      //not sure which of these or any are even correct
+      //does skipping ahead 4 samples skip 4 samples in all channels?
+      //does it split them evenly? what about skipping odd amounts?
+      //offset /= replacer.get_tot_samples();
+      //offset *= replacer.get_tot_samples();
+      sample_src.addTime(offset);
+      
+      sample_src.tick(frame_in);
+      for (int i = 0; i < channels; i++) {
+	frame_in.getChannel(i, temp_frames,0);
+	filt_frames = filt.fir_filter_frame(temp_frames);
+	frame_out.getChannel(i, temp_frames, 0);
+	temp_frames += filt_frames;
+	frame_out.setChannel(i, temp_frames, 0);
+      }
+      if (print_some_samples && i % 777 == 0) {
+	for (int i = 0; i < samples_per_slice; i++) {
+	  double out = frame_out[i];
+	  double in = frame_in[i];
+	  std::cout << "in :" << in << " out :" << out << "\n ";
+	}
+
+      }
+    }
+
+    output.tick(frame_out);
+      
+    //remove chunks that just ended
+    while(active_end.size() > 0 && active_end.front().get_active_end() <= i) {
+      active_chunks.remove(active_end.front());
+      active_end.pop_front();
+    }
+  }
+  output.closeFile();
 }

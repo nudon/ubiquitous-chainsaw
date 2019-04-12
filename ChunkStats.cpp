@@ -1,8 +1,10 @@
 #include <iostream>
+#include <limits>
 #include "ChunkStats.h"
 using Eigen::MatrixXi;
 
 ChunkStats::ChunkStats(MatrixXi chunk_ids) {
+  bin_size = chunk_ids.rows();
   stats = make_stats(chunk_ids);
 }
 
@@ -16,7 +18,13 @@ MatrixXi ChunkStats::make_stats(MatrixXi chunk_ids) {
   int num_chunks = chunk_ids(ri, ci);
   //potentially construct this to be row_major
   MatrixXi stats = MatrixXi::Constant(num_chunks + 1, stat_fields, -1);
+  double max_val = std::numeric_limits<int>::max();
+  double min_val = -1 * std::numeric_limits<int>::max() ; 
   stats.col(chunk_size_i) = MatrixXi::Constant(num_chunks + 1, 1, 0);
+  stats.col(min_freq_i) = MatrixXi::Constant(num_chunks + 1, 1, max_val);
+  stats.col(min_time_i) = MatrixXi::Constant(num_chunks + 1, 1, max_val);
+  stats.col(max_freq_i) = MatrixXi::Constant(num_chunks + 1, 1, min_val);
+  stats.col(max_time_i) = MatrixXi::Constant(num_chunks + 1, 1, min_val);
 
   int freq_range = chunk_ids.rows();
   int time_range = chunk_ids.cols();
@@ -36,7 +44,6 @@ MatrixXi ChunkStats::make_stats(MatrixXi chunk_ids) {
       }
     }
   }
-  stats.col(chunk_size_i).minCoeff(&ri);
   return stats;
 }
 
@@ -49,27 +56,25 @@ std::list<Chunk> ChunkStats::cull_chunks() {
 
   std::list<Chunk> chunk_list;
   MatrixXi sizes = get_size();
-  int chunks = sizes.rows();
-  //ignoring chunk_id 0
-  sizes = get_size().block(1,0, chunks - 1,1);
-  chunks = sizes.rows();
-
-  double average_size = (float)sizes.sum() / sizes.sum();
   MatrixXi minf = get_min_freq();
   MatrixXi maxf = get_max_freq();
   MatrixXi mint = get_min_time();
   MatrixXi maxt = get_max_time();
   int chunk_count = 0;
-  for (int i = 0; i < chunks; i++) {
+  int chunks = sizes.rows();
+  //chunk id zero is not a chunk , just stats for everything that didn't get assigned one
+  //ignore it when taking the average and when looping
+  double average_size = (float)get_size().block(1,0, chunks - 1,1).sum() / (chunks - 1);
+  for (int i = 1; i < chunks; i++) {
     if (sizes(i) > average_size) {
-      //gather min, max, delta of time and frequency, construct a chunk
-      //find a better name for chunks to many things have chunk in the name
       chunk_count++;
-      Chunk temp = Chunk(minf(i), maxf(i), mint(i), maxt(i));
+      Chunk temp = Chunk(minf(i), maxf(i), mint(i), maxt(i), bin_size, i);
+      // std::cout << minf(i) << " " << maxf(i) << " " << mint(i) << " " << maxt(i) << "\n";
       chunk_list.insert(chunk_list.begin(), temp);
     }
   }
   std::cout << "original size was " << chunks << " culled size is " << chunk_count << "\n";
+  std::cout << "average size was " << average_size << "\n";
   return chunk_list; 
 }
 

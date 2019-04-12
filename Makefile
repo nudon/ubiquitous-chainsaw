@@ -21,12 +21,12 @@ IHILLS_OBJECTS = $(IHILLS_DIR)FIRFilterCode.o $(IHILLS_DIR)FFTCode.o
 
 PNGWRITER_PLEASE =  -lpng -L./png/ -lPNGwriter
 
-MY_OBJECTS = driver.o eigen_to_image.o ChunkMatch.o ChunkStats.o Song.o SongEmbedder.o ChunkCompare.o util.o
+MY_OBJECTS = driver.o Chunk.o ChunkCompare.o ChunkMatch.o ChunkStats.o Song.o SongEmbedder.o ChunkFilter.o  util.o eigen_to_image.o
 
 TOT_PATH = $(IHILLS_PATH) $(KISSFFT_PATH) $(STK_PATH)
 TOT_LINK = $(MATH_LINK) $(STK_LINK) $(PNGWRITER_PLEASE)
 
-COMP_FLAGS = -Wall -g $(EIGEN_CONFIG) 
+COMP_FLAGS = -Wall -g -O0 $(EIGEN_CONFIG) 
 TARGET = test
 ALLOBJ = $(MY_OBJECTS) $(KISSFFT_OBJECTS) $(IHILLS_OBJECTS)
 

@@ -8,24 +8,32 @@ using Eigen::MatrixXf;
 using Eigen::MatrixXi;
 using namespace stk;
 
-MatrixXf TFD_extract(FileWvIn input, int total_slices, int samples_per_slice, int channels) {
-  int nfft = samples_per_slice;
+
+
+MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, int channels) {
+  //int nfft = samples_per_slice;
   bool is_inverse = false;
   //number of bins fft puts things into. apparently it's the same as nfft.
   //since nothing is placed in the upper half, divide by 2
   //though if you want to play around with inverse fft, set to nfft
-  int freq_chunks = nfft / 2;
-  kiss_fftr_cfg cfg = kiss_fftr_alloc( nfft ,is_inverse,0,0 );
-  size_t input_size = sizeof(kiss_fft_scalar) * samples_per_slice;
-  size_t output_size = sizeof(kiss_fft_cpx) * freq_chunks;
+  //int freq_chunks = nfft / 2;
+  //freq_chunks = samples_per_slice;
+  kiss_fftr_cfg cfg = kiss_fftr_alloc( samples_per_slice ,is_inverse,0,0 );
+  size_t input_size = sizeof(kiss_fft_scalar) * (samples_per_slice + 1);
+  size_t output_size = sizeof(kiss_fft_cpx) * (samples_per_slice + 1);
   kiss_fft_scalar* fft_input =(kiss_fft_scalar*)KISS_FFT_MALLOC(input_size);
   kiss_fft_cpx* fft_output =(kiss_fft_cpx*)KISS_FFT_MALLOC(output_size);
   bool print = false;
   StkFrames slice(samples_per_slice, channels);
   StkFrames single_chan(samples_per_slice, 1);
 
-  MatrixXf tfd = MatrixXf(freq_chunks, total_slices); 
+  for (int i = 0 ; i < samples_per_slice; i++) {
+    fft_input[i] = 0;
+    fft_output[i] = (kiss_fft_cpx){.r = 0, .i = 0};
+  }
+  MatrixXf tfd = MatrixXf(samples_per_slice, total_slices); 
   tfd.setZero();
+  
   for (int slice_i = 0; slice_i < total_slices; slice_i++) {
     input.tick(slice);
     for (int i = 0; i < channels; i++) {
@@ -34,7 +42,7 @@ MatrixXf TFD_extract(FileWvIn input, int total_slices, int samples_per_slice, in
 	fft_input[i] = single_chan[i];
       }
       kiss_fftr(cfg, fft_input, fft_output);
-      for (int freq_i = 0; freq_i < freq_chunks; freq_i++) {
+      for (int freq_i = 0; freq_i < samples_per_slice; freq_i++) {
 	kiss_fft_cpx a = fft_output[freq_i];
 	double modulus =  pow(a.r, 2) + pow(a.i, 2);
 	if (print) {
@@ -48,10 +56,121 @@ MatrixXf TFD_extract(FileWvIn input, int total_slices, int samples_per_slice, in
       }
     }
   }
-  std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
+  //std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
+  KISS_FFT_FREE(fft_input);
+  KISS_FFT_FREE(fft_output);
   kiss_fftr_free(cfg);
   return tfd;
 }
+#include <random>
+//debugging thing which just takes random values instead of reading from file
+MatrixXf noread_TFD_extract(int total_slices, int samples_per_slice, int channels) {
+  bool is_inverse = false;
+  kiss_fftr_cfg cfg = kiss_fftr_alloc( samples_per_slice ,is_inverse,0,0 );
+  size_t input_size = sizeof(kiss_fft_scalar) * (samples_per_slice + 1);
+  size_t output_size = sizeof(kiss_fft_cpx) * (samples_per_slice + 1);
+  kiss_fft_scalar* fft_input =(kiss_fft_scalar*)KISS_FFT_MALLOC(input_size);
+  kiss_fft_cpx* fft_output =(kiss_fft_cpx*)KISS_FFT_MALLOC(output_size);
+  bool print = false;
+  StkFrames slice(samples_per_slice, channels);
+  StkFrames single_chan(samples_per_slice, 1);
+
+  for (int i = 0 ; i < samples_per_slice; i++) {
+    fft_input[i] = 0;
+    fft_output[i] = (kiss_fft_cpx){.r = 0, .i = 0};
+  }
+  MatrixXf tfd = MatrixXf(samples_per_slice, total_slices); 
+  tfd.setZero();
+  std::default_random_engine gen;
+  int lim = 1;
+  std::uniform_int_distribution<int> rand(-lim, lim);
+  for (int slice_i = 0; slice_i < total_slices; slice_i++) {
+    //input.tick(slice);
+    for (int i = 0; i < channels; i++) {
+      //slice.getChannel(i, single_chan, 0);
+      for (int i = 0; i < samples_per_slice; i++) {
+	//fft_input[i] = single_chan[i];
+	fft_input [i] = rand(gen);
+      }
+      kiss_fftr(cfg, fft_input, fft_output);
+      for (int freq_i = 0; freq_i < samples_per_slice; freq_i++) {
+	kiss_fft_cpx a = fft_output[freq_i];
+	double modulus =  pow(a.r, 2) + pow(a.i, 2);
+	if (print) {
+	  std::cout << modulus << " ";
+	}
+	//plus equals to get both channels
+	tfd(freq_i, slice_i) += modulus;
+      }
+      if (print) {
+	std::cout << "\n";
+      }
+    }
+  }
+  //std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
+  KISS_FFT_FREE(fft_input);
+  KISS_FFT_FREE(fft_output);
+  kiss_fftr_free(cfg);
+  return tfd;
+}
+
+
+MatrixXf filename_TFD_extract(std::string fn, int total_slices, int samples_per_slice, int channels) {
+  //int nfft = samples_per_slice;
+  bool is_inverse = false;
+  //number of bins fft puts things into. apparently it's the same as nfft.
+  //since nothing is placed in the upper half, divide by 2
+  //though if you want to play around with inverse fft, set to nfft
+  //int freq_chunks = nfft / 2;
+  //freq_chunks = samples_per_slice;
+  FileWvIn input;
+  input.openFile(fn);
+  kiss_fftr_cfg cfg = kiss_fftr_alloc( samples_per_slice ,is_inverse,0,0 );
+  size_t input_size = sizeof(kiss_fft_scalar) * (samples_per_slice + 1);
+  size_t output_size = sizeof(kiss_fft_cpx) * (samples_per_slice + 1);
+  kiss_fft_scalar* fft_input =(kiss_fft_scalar*)KISS_FFT_MALLOC(input_size);
+  kiss_fft_cpx* fft_output =(kiss_fft_cpx*)KISS_FFT_MALLOC(output_size);
+  bool print = false;
+  StkFrames slice(samples_per_slice, channels);
+  StkFrames single_chan(samples_per_slice, 1);
+
+  for (int i = 0 ; i < samples_per_slice; i++) {
+    fft_input[i] = 0;
+    fft_output[i] = (kiss_fft_cpx){.r = 0, .i = 0};
+  }
+  MatrixXf tfd = MatrixXf(samples_per_slice, total_slices); 
+  tfd.setZero();
+  
+  for (int slice_i = 0; slice_i < total_slices; slice_i++) {
+    input.tick(slice);
+    for (int i = 0; i < channels; i++) {
+      slice.getChannel(i, single_chan, 0);
+      for (int i = 0; i < samples_per_slice; i++) {
+	fft_input[i] = single_chan[i];
+      }
+      kiss_fftr(cfg, fft_input, fft_output);
+      for (int freq_i = 0; freq_i < samples_per_slice; freq_i++) {
+	kiss_fft_cpx a = fft_output[freq_i];
+	double modulus =  pow(a.r, 2) + pow(a.i, 2);
+	if (print) {
+	  std::cout << modulus << " ";
+	}
+	//plus equals to get both channels
+	tfd(freq_i, slice_i) += modulus;
+      }
+      if (print) {
+	std::cout << "\n";
+      }
+    }
+  }
+  //std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
+  KISS_FFT_FREE(fft_input);
+  KISS_FFT_FREE(fft_output);
+  kiss_fftr_free(cfg);
+  input.closeFile();
+  return tfd;
+}
+
 
 //creates a 1-dimensional gaussian filter, as an stk finite impulse response filter
 //  int filter_size = 20;
@@ -104,8 +223,7 @@ stk::Fir create_fir_from_coefs(double* coefs, int len) {
     val = coefs[i];
     kernel.insert(kernel.begin(), val);
   }
-  Fir ret (kernel);
-  return ret;
+  return Fir(kernel);
 }
 
 MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
@@ -202,7 +320,7 @@ double snaz(MatrixXf filt, int snazr) {
     }
     if (i < snazr) {
       nz_avg = nz_tot / nz_count;
-      std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
+      //std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
     }
   }
   return nz_avg;

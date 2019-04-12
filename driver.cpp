@@ -13,4 +13,5 @@ int main() {
   Song b (song2);
   SongEmbedder embeder (a, b);
   embeder.funk();
+  return 0;
 }

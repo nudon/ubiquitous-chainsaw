@@ -14,6 +14,7 @@
 
 #include "ChunkStats.h"
 #include "Chunk.h"
+
 using namespace stk;
 
 using Eigen::MatrixXf;

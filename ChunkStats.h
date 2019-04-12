@@ -30,6 +30,7 @@ private:
   static const int max_freq_i;
   static const int min_time_i;
   static const int max_time_i;
+  int bin_size;
 
   Eigen::MatrixXi stats;
   Eigen::MatrixXi make_stats(Eigen::MatrixXi chunk_ids);
