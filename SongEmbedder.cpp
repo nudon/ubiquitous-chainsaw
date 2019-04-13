@@ -113,7 +113,7 @@ MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range) {
   chunk_ids.setZero( );
   //threshold values < average to zero
   //do this to not care about very minor sounds
-  nz_avg = snaz(filt, 2);
+  nz_avg = snaz(filt, 1);
   
   //isn't a perfect grouping algorithim, since the local grouping is kind of naive
   //hoping further culling methods down the line will get rid of bad groups

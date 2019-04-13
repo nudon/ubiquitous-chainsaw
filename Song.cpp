@@ -14,7 +14,7 @@ Song::Song(std::string fn) {
   channels = song_wv.channelsOut();
   song_file.open(fn, channels);
   samples = song_file.fileSize();
-  file_rate = song_file.fileSize();
+  file_rate = song_file.fileRate();
   song_file.close();
   song_wv.closeFile();
 }
