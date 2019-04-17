@@ -1,10 +1,14 @@
 #include <iostream>
 #include <limits>
 #include "ChunkStats.h"
+#include "util.h"
 using Eigen::MatrixXi;
+
+double get_size_wrap(Chunk);
 
 ChunkStats::ChunkStats(MatrixXi chunk_ids) {
   bin_size = chunk_ids.rows();
+  bin_len = chunk_ids.cols();
   stats = make_stats(chunk_ids);
 }
 
@@ -47,7 +51,7 @@ MatrixXi ChunkStats::make_stats(MatrixXi chunk_ids) {
   return stats;
 }
 
-std::list<Chunk> ChunkStats::cull_chunks() {
+std::list<Chunk> ChunkStats::cull_chunks(int snazr) {
   //wait I don't even need the chunkids anymore 
   
   //thinking of returning a linked list of chunk objects
@@ -62,22 +66,29 @@ std::list<Chunk> ChunkStats::cull_chunks() {
   MatrixXi maxt = get_max_time();
   int chunk_count = 0;
   int chunks = sizes.rows();
+  double average_size = 0;
+  
   //chunk id zero is not a chunk , just stats for everything that didn't get assigned one
   //ignore it when taking the average and when looping
-  double average_size = (float)get_size().block(1,0, chunks - 1,1).sum() / (chunks - 1);
+  //generalize this into another snaz
   for (int i = 1; i < chunks; i++) {
     if (sizes(i) > average_size) {
       chunk_count++;
-      Chunk temp = Chunk(minf(i), maxf(i), mint(i), maxt(i), bin_size, i);
+      Chunk temp = Chunk(minf(i), maxf(i), mint(i), maxt(i), bin_size, bin_len,i);
       // std::cout << minf(i) << " " << maxf(i) << " " << mint(i) << " " << maxt(i) << "\n";
       chunk_list.insert(chunk_list.begin(), temp);
     }
   }
-  std::cout << "original size was " << chunks << " culled size is " << chunk_count << "\n";
+  //average_size = snaz(chunk_list, snazr);
+  average_size = gsnaz(chunk_list, get_size_wrap, snazr);
+  std::cout << "original size was " << chunks << " culled size is " << chunk_list.size() << "\n";
   std::cout << "average size was " << average_size << "\n";
   return chunk_list; 
 }
 
+double get_size_wrap(Chunk a) {
+  return a.get_chunk_size();
+}
 
 
 const int ChunkStats::stat_fields = 5;

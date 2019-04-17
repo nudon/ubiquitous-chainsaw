@@ -1,14 +1,18 @@
 #include <iostream>
 #include <Eigen/Eigen>
 #include <list>
+#include <math.h>
 #include "SongEmbedder.h"
 #include "Chunk.h"
 #include "ChunkStats.h"
 #include "ChunkMatch.h"
 #include "util.h"
+#include "eigen_to_image.h"
 
 
 using std::list;
+using std::string;
+using std::max;
 using Eigen::MatrixXf;
 using Eigen::MatrixXi;
 using stk::FileWvIn;
@@ -20,10 +24,20 @@ std::pair<MatrixXf, MatrixXf> filter(MatrixXf input);
 MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range);
 list<Chunk> get_important_chunks(MatrixXi chunks);
 
+MatrixXi fill_chunkify(MatrixXf &input, int thresh);
+void recurse_fill(MatrixXf &input, MatrixXi &ids, int x, int y, int cid);
+
+
 SongEmbedder::SongEmbedder(Song src, Song dst) {
   reciptor = src;
   replacer = dst;
 }
+
+double chunkmatch_get_score_wrapper(ChunkMatch a) {
+  return a.get_score();
+}
+
+
 
 //placeholder heavy lifting function
 void SongEmbedder::funk() {
@@ -34,9 +48,15 @@ void SongEmbedder::funk() {
     //then call chunkify, ChunkStats, then cull_chunks, join x/y chunks
     list<Chunk> reciptor_chunks = make_chunks(samples_per_slice, reciptor);
     list<Chunk> replacer_chunks = make_chunks(samples_per_slice, replacer);
-
-
     list<ChunkMatch>matches = get_matches(reciptor_chunks, replacer_chunks);
+    //don't actually want gsnaz
+    //good match scores are zero, bad are high
+    //straight snaz results in only making bad matches
+    //could fix by subtracting out highest/worst match score then multiplying by -1
+    //gsnaz(matches, chunkmatch_get_score_wrapper, 1);
+    std::cout << "orig len is " << matches.size();
+    reverse_gsnaz(matches, chunkmatch_get_score_wrapper, 1);
+    std::cout << "rsnazed len is " << matches.size() << "\n";
 
     list<ChunkMatch> active_start;
     list<ChunkMatch> active_end;
@@ -47,7 +67,7 @@ void SongEmbedder::funk() {
 
     active_start.sort(ChunkMatch::comp_active_start);
     active_end.sort(ChunkMatch::comp_active_end);
-
+    
     std::string fn = "muxed";
     output_remix(samples_per_slice, active_start, active_end, fn);
     std::cout << "made it to the end!\n";
@@ -65,18 +85,51 @@ void SongEmbedder::funk() {
 //template< template <class T> class container>
 list<Chunk> make_chunks(int samples_per_slice, Song input) {
   MatrixXf spec = input.spectrogram(samples_per_slice);
-  std::pair<MatrixXf, MatrixXf> xy_chunks = filter(spec);
+  std::pair<MatrixXf, MatrixXf> xy_filt = filter(spec);
+  MatrixXf x_filt = std::get<0>(xy_filt);
+  MatrixXf y_filt = std::get<1>(xy_filt);
   int x_vert = 1;
   int x_horz = 2;
   int y_vert = x_vert;
   int y_horz = x_horz;
-  MatrixXi x_chunks = chunkify(std::get<0>(xy_chunks), x_vert, x_horz);
-  MatrixXi y_chunks = chunkify(std::get<1>(xy_chunks), y_vert, y_horz);
+  int snazr = 1;
+  snaz(x_filt, snazr);
+  snaz(y_filt, snazr);
+  MatrixXi x_chunks = fill_chunkify(x_filt, 0.0);
+  MatrixXi y_chunks = fill_chunkify(y_filt, 0.0);
   list<Chunk> part1 = get_important_chunks(x_chunks);
   list<Chunk> part2 = get_important_chunks(y_chunks);
   list<Chunk> ret;
   ret.insert(ret.begin(), part1.begin(), part1.end());
   ret.insert(ret.begin(), part2.begin(), part2.end());
+
+  //std::cout << "making pictures\n";
+  string bn = input.get_file_name();
+  string post = ".png";
+  write_eigen_to_file(bn + ".spec" + post, spec);
+  write_eigen_to_file(bn + ".filX" + post, x_filt);
+  write_eigen_to_file(bn + ".filY" + post, y_filt);
+
+  write_chunks_to_file(bn + ".chunkX" + post, x_chunks);
+  write_chunks_to_file(bn + ".chunkY" + post, y_chunks);
+  int xcy = x_chunks.rows();
+  int xcx = x_chunks.cols();
+  int ycy = y_chunks.rows();
+  int ycx = y_chunks.cols();
+  write_chunks_to_file(bn + ".cull_chunkX" + post, part1, xcy, xcx);
+  write_chunks_to_file(bn + ".cull_chunkY" + post, part2, ycy, ycx);
+  write_chunks_to_file(bn + ".cull_chunkTOT" + post, ret, max(xcy, ycy), max(xcx, ycx));
+
+  /*
+  int maxsnaz = 3;
+  for (int i = 0; i < maxsnaz; i++) {
+    std::string number = std::to_string(i);
+    snaz(x_filt , 1);
+    snaz(y_filt , 1);
+    write_eigen_to_file(bn + ".filX" + number + post, x_filt);
+    write_eigen_to_file(bn + ".filY" + number + post, y_filt);
+  }
+  */
   return ret;
 }
 
@@ -113,7 +166,8 @@ MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range) {
   chunk_ids.setZero( );
   //threshold values < average to zero
   //do this to not care about very minor sounds
-  nz_avg = snaz(filt, 1);
+  int snazr = 1;
+  nz_avg = snaz(filt, snazr);
   
   //isn't a perfect grouping algorithim, since the local grouping is kind of naive
   //hoping further culling methods down the line will get rid of bad groups
@@ -168,19 +222,52 @@ MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range) {
   return chunk_ids;
 }
 
+//the original chunkify had some problems
+//this will just assign any non-zero input values the same chunk id as it's adjacent non-zero input values
+MatrixXi fill_chunkify(MatrixXf &input, int thresh) {
+  int chunk_id = 1;
+  int freq_range = input.rows();
+  int time_range = input.cols();
+  MatrixXi ids(freq_range, time_range);
+  ids.setZero();
+  for (int time_i = 0; time_i < time_range; time_i++) {
+    for (int freq_i = 0; freq_i < freq_range; freq_i++) {
+      if (input(freq_i, time_i) > thresh) {
+	recurse_fill(input, ids, time_i, freq_i, chunk_id++);
+      }
+    }
+  }
+  return ids;
+}
+
+void recurse_fill(MatrixXf &input, MatrixXi &ids, int x, int y, int cid) {
+  int rows = input.rows();
+  int cols = input.cols();
+  if (0 <= x && x < cols && 0 <= y && y < rows) {
+    if (input(y,x) > 0.0 && ids(y,x) == 0) {
+      ids(y,x) = cid;
+      recurse_fill(input, ids, x + 1, y, cid);
+      recurse_fill(input, ids, x - 1, y, cid);
+      recurse_fill(input, ids, x, y + 1, cid);
+      recurse_fill(input, ids, x, y - 1, cid);
+    }
+  } 
+}
+
 
 
 //template< template <class T> class container>
 std::list<Chunk> get_important_chunks(MatrixXi chunks) {
   ChunkStats stats (chunks);
-  return stats.cull_chunks();
+  int snazr = 1;
+  list<Chunk> ret = stats.cull_chunks(snazr);
+  return ret;
 }
 
 
 list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> reciptor_chunks, list<Chunk> replacer_chunks) {
   //construct a comparer
   //weights for frequency center, frequency margin, and time maring
-
   ChunkCompare comp (1,1,1);
   list<ChunkMatch> matches;
   ChunkMatch a_match;
@@ -213,7 +300,6 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> active_s
   sample_src.openFile(replacer.get_file_name());
   output.openFile("muxed.wav", channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
   bool print_some_samples = false;
-  //could also be a hash map
   list<ChunkMatch> active_chunks;
   for (int i = 0; i < new_slices; i++) {
     //add newly activated chunks

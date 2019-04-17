@@ -24,6 +24,7 @@ class ChunkMatch {
   void best_match_chunk(std::list<Chunk> many_chunks, ChunkCompare comp);
   int get_active_start();
   int get_active_end();
+  double get_score() { return score; }
 
   Chunk get_orig_chunk() { return orig; }
   Chunk get_match_chunk() { return match; }

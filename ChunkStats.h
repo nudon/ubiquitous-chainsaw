@@ -21,7 +21,7 @@ public :
   Eigen::MatrixXi get_max_time() {  return stats.col(max_time_i); }
   Eigen::MatrixXi get_delta_freq() {  return get_max_freq() - get_min_freq();}
   Eigen::MatrixXi get_delta_time() {  return get_max_time() - get_min_time();}
-  std::list<Chunk> cull_chunks();
+  std::list<Chunk> cull_chunks(int snazr);
   
 private:
   static const int stat_fields;
@@ -31,6 +31,7 @@ private:
   static const int min_time_i;
   static const int max_time_i;
   int bin_size;
+  int bin_len;
 
   Eigen::MatrixXi stats;
   Eigen::MatrixXi make_stats(Eigen::MatrixXi chunk_ids);

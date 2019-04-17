@@ -6,7 +6,9 @@
 
 using Eigen::MatrixXf;
 using Eigen::MatrixXi;
+using std::list;
 using namespace stk;
+
 
 
 
@@ -31,10 +33,12 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
     fft_input[i] = 0;
     fft_output[i] = (kiss_fft_cpx){.r = 0, .i = 0};
   }
-  MatrixXf tfd = MatrixXf(samples_per_slice, total_slices); 
+  int rows = samples_per_slice / 2;
+  int cols = total_slices;
+  MatrixXf tfd = MatrixXf(rows, cols); 
   tfd.setZero();
   
-  for (int slice_i = 0; slice_i < total_slices; slice_i++) {
+  for (int slice_i = 0; slice_i < cols; slice_i++) {
     input.tick(slice);
     for (int i = 0; i < channels; i++) {
       slice.getChannel(i, single_chan, 0);
@@ -42,7 +46,7 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
 	fft_input[i] = single_chan[i];
       }
       kiss_fftr(cfg, fft_input, fft_output);
-      for (int freq_i = 0; freq_i < samples_per_slice; freq_i++) {
+      for (int freq_i = 0; freq_i < rows ; freq_i++) {
 	kiss_fft_cpx a = fft_output[freq_i];
 	double modulus =  pow(a.r, 2) + pow(a.i, 2);
 	if (print) {
@@ -290,11 +294,11 @@ MatrixXf dog(MatrixXf full, MatrixXf gauss) {
 //takes matrix and rounds to apply snaz, zeros values in matrix
 //returns average of penultimate round
 //having snazr as anything above 1 is typically excessive, consider at most using 2
-double snaz(MatrixXf filt, int snazr) {
+double snaz(MatrixXf &filt, int snazr) {
   int freq_range = filt.rows();
   int time_range = filt.cols();
   double nz_tot = 0;
-  double nz_avg = 0;
+  double nz_avg = 0.0;
   int nz_count = 0;
   float val = 0;
   for (int i = 0; i <= snazr; i++) {
@@ -307,7 +311,7 @@ double snaz(MatrixXf filt, int snazr) {
     for (int freq_i = 0; freq_i < freq_range; freq_i++) {
       for (int time_i = 0; time_i < time_range; time_i++) {
 	val = filt(freq_i, time_i);
-	if (val < nz_avg) {
+	if (val <= nz_avg) {
 	  filt(freq_i, time_i) = 0.0;
 	}
 	else {
@@ -320,9 +324,71 @@ double snaz(MatrixXf filt, int snazr) {
     }
     if (i < snazr) {
       nz_avg = nz_tot / nz_count;
-      //std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
+      std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
     }
   }
   return nz_avg;
 }
+
+double snaz(list<Chunk> &many_chunks, int snazr) {
+  //may not need this but worried about breaking iterators
+  //std::list<Chunk> temp;
+  double nz_tot = 0;
+  double nz_avg = 0.0;
+  double val = 0;
+  int nz_count = 0;
+  list<Chunk> temp1 (many_chunks);
+  list<Chunk> temp2;
+  for (int i = 0; i <= snazr; i++) {
+    nz_tot = 0;
+    nz_count = 0;
+    for (Chunk a_chunk : temp1) {
+      val = a_chunk.get_chunk_size();
+      if (val > nz_avg) {
+	nz_tot += val;
+	nz_count++;
+	temp2.push_front(a_chunk);
+      }
+    }
+    if (i < snazr) {
+      nz_avg = nz_tot / nz_count;
+      temp1.assign(temp2.begin(), temp2.end());
+      temp2.erase(temp2.begin(), temp2.end());
+    }
+  }
+  many_chunks.assign(temp2.begin(), temp2.end());
+  return nz_avg;
+}
+
+/*
+double snaz(list<ChunkMatch> &many_matches, int snazr) {
+  //may not need this but worried about breaking iterators
+  //std::list<Chunk> temp;
+  double nz_tot = 0;
+  double nz_avg = 0;
+  double val = 0;
+  int nz_count = 0;
+  list<ChunkMatch> temp1 (many_matches);
+  list<ChunkMatch> temp2;
+  for (int i = 0; i <= snazr; i++) {
+    nz_tot = 0;
+    nz_count = 0;
+    for (Chunk a_chunk : temp1) {
+      val = a_chunk.get_chunk_size();
+      if (val >= nz_avg) {
+	nz_tot += val;
+	nz_count++;
+	temp2.push_front(a_chunk);
+      }
+    }
+    if (i < snazr) {
+      nz_avg = nz_tot / nz_count;
+      temp1.assign(temp2.begin(), temp2.end());
+      temp2.erase(temp2.begin(), temp2.end());
+    }
+  }
+  many_matches.assign(temp2.begin(), temp2.end());
+  return nz_avg;
+}
+*/
 
