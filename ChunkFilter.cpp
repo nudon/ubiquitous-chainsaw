@@ -1,7 +1,11 @@
 #include "util.h"
 #include "ChunkFilter.h"
+#include <iostream>
 using stk::StkFrames;
-#define TAPS 60
+using stk::Fir;
+#define TAPS 120
+
+
 ChunkFilter::ChunkFilter(float freq_center, int freq_margin, int size) {
   //just create an FIR filter based on chunk dimensions
   center = freq_center;
@@ -32,6 +36,42 @@ StkFrames ChunkFilter::fir_filter_frame(StkFrames &input) {
   }
   return filtered;
 }
+
+int ChunkFilter::fir_filter_frame(StkFrames &input, StkFrames &output) {
+  int ret = 0;
+  if (input.channels() != output.channels()) {
+    std::cerr << "filter input and output have a different amount of channels\n";
+    ret = 1;
+  }
+  if (input.frames() != output.frames()) {
+    std::cerr << "filter input and output have different sizes\n";
+    ret = 2;
+  }
+  //apply fir_filter to input
+
+  if (ret == 0) {
+    ret = fir_filter_multi(input,output);
+  }
+  return ret;
+}
+
+int ChunkFilter::fir_filter_multi(StkFrames &input, StkFrames &output) {
+  //apply fir_filter to input
+  int ret = 0;
+  int channels = input.channels();
+  int samples = input.frames();
+  StkFrames temp_frames (samples,1);
+  StkFrames frame_out (samples, 1);
+  for (int i = 0; i < channels; i++) {
+    fir_filter.tick(input, temp_frames, i, 0);
+    output.getChannel(i, frame_out, 0);
+    frame_out += temp_frames;
+    output.setChannel(i, frame_out, 0);
+  }
+  return ret;
+}
+
+
 
 StkFrames fft_filter_frame(StkFrames &input) {
   //do an fft

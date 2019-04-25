@@ -14,6 +14,7 @@ using std::tuple;
 using Eigen::MatrixXi;
 using Eigen::MatrixXf;
 
+//assigns chunk id a random color
 tuple<double, double ,double> hash_id(int id) {
   double r, g, b;
   std::hash<double> ihash;
@@ -74,11 +75,11 @@ void write_chunks_to_file(const char* fn, MatrixXi &mat) {
   #endif
 }
 
-void write_chunks_to_file(std::string fn, std::list<Chunk> chunks, int rows, int cols) {
+void write_chunks_to_file(std::string fn, std::list<Chunk> &chunks, int rows, int cols) {
   write_chunks_to_file(fn.c_str(), chunks, rows, cols);
 }
 
-void write_chunks_to_file(const char* fn, std::list<Chunk> chunks, int rows, int cols) {
+void write_chunks_to_file(const char* fn, std::list<Chunk> &chunks, int rows, int cols) {
   //convert chunks to a matrixXi
   MatrixXi mat(rows, cols);
   mat.setZero();
@@ -110,7 +111,6 @@ void write_eigen_to_file(const char* fn, MatrixXf &mat) {
 
 void write_eigen_to_file(char* fn, MatrixXf &mat) {
   #ifdef PICTURE
-  //std::cout << fn <<  "yeyeye\n";
   int rows = mat.rows();
   int cols = mat.cols();
   float v = 0;
@@ -119,9 +119,7 @@ void write_eigen_to_file(char* fn, MatrixXf &mat) {
   for (int row_i = 0; row_i < rows; row_i++) {
     for (int col_i = 0; col_i < cols; col_i++) {
       v = mat(row_i, col_i);
-      //maybe do scaling, or other things if you want spectogram to be a color
-      p = v* 80;
-      img.plot(col_i + 1, row_i + 1, p,p,p);
+      img.plot(col_i + 1, row_i + 1, v,v,v);
     }
   }
   img.close(); 

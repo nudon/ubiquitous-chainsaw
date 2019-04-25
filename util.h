@@ -14,8 +14,6 @@
 
 //thing with fourier transform
 Eigen::MatrixXf TFD_extract(stk::FileWvIn &input, int total_slices, int samples_per_slice, int channels);
-Eigen::MatrixXf noread_TFD_extract(int total_slices, int samples_per_slice, int channels);
-Eigen::MatrixXf filename_TFD_extract(std::string fn, int total_slices, int samples_per_slice, int channels);
 
 //filtering methods
 //using stk
@@ -26,8 +24,8 @@ stk::Fir create_1d_gaussian_filter(int length, double amplitude, double center, 
 
 Eigen::MatrixXf create_1d_gaussian_filter_col(int length, double amplitude, double stddev);
 Eigen::MatrixXf create_1d_gaussian_filter_row(int length, double amplitude, double stddev);
-Eigen::MatrixXf one_d_convolve(Eigen::MatrixXf mat, Eigen::MatrixXf kern);
-Eigen::MatrixXf dog(Eigen::MatrixXf full, Eigen::MatrixXf gauss);
+Eigen::MatrixXf one_d_convolve(Eigen::MatrixXf &mat, Eigen::MatrixXf &kern);
+Eigen::MatrixXf dog(Eigen::MatrixXf &full, Eigen::MatrixXf &gauss);
 
 //chunking functions
 double snaz(Eigen::MatrixXf &filt, int snazr);

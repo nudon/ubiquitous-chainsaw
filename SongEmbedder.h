@@ -19,9 +19,10 @@ class SongEmbedder{
   Song reciptor;
   Song replacer;
 
-  std::list<ChunkMatch> get_matches(std::list<Chunk> reciptor_chunks, std::list<Chunk> replacer_chunks);
+  std::list<ChunkMatch> get_matches(std::list<Chunk> &reciptor_chunks, std::list<Chunk> &replacer_chunks);
+
   
-  void output_remix(int sps,std::list<ChunkMatch> a_start, std::list<ChunkMatch> a_end, std::string fn);
+  void output_remix(int sps,std::list<ChunkMatch> &matches, std::string fn);
   
 };
 

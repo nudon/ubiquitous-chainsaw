@@ -52,7 +52,6 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
 	if (print) {
 	  std::cout << modulus << " ";
 	}
-	//plus equals to get both channels
 	tfd(freq_i, slice_i) += modulus;
       }
       if (print) {
@@ -60,121 +59,11 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
       }
     }
   }
-  //std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
   KISS_FFT_FREE(fft_input);
   KISS_FFT_FREE(fft_output);
   kiss_fftr_free(cfg);
   return tfd;
 }
-#include <random>
-//debugging thing which just takes random values instead of reading from file
-MatrixXf noread_TFD_extract(int total_slices, int samples_per_slice, int channels) {
-  bool is_inverse = false;
-  kiss_fftr_cfg cfg = kiss_fftr_alloc( samples_per_slice ,is_inverse,0,0 );
-  size_t input_size = sizeof(kiss_fft_scalar) * (samples_per_slice + 1);
-  size_t output_size = sizeof(kiss_fft_cpx) * (samples_per_slice + 1);
-  kiss_fft_scalar* fft_input =(kiss_fft_scalar*)KISS_FFT_MALLOC(input_size);
-  kiss_fft_cpx* fft_output =(kiss_fft_cpx*)KISS_FFT_MALLOC(output_size);
-  bool print = false;
-  StkFrames slice(samples_per_slice, channels);
-  StkFrames single_chan(samples_per_slice, 1);
-
-  for (int i = 0 ; i < samples_per_slice; i++) {
-    fft_input[i] = 0;
-    fft_output[i] = (kiss_fft_cpx){.r = 0, .i = 0};
-  }
-  MatrixXf tfd = MatrixXf(samples_per_slice, total_slices); 
-  tfd.setZero();
-  std::default_random_engine gen;
-  int lim = 1;
-  std::uniform_int_distribution<int> rand(-lim, lim);
-  for (int slice_i = 0; slice_i < total_slices; slice_i++) {
-    //input.tick(slice);
-    for (int i = 0; i < channels; i++) {
-      //slice.getChannel(i, single_chan, 0);
-      for (int i = 0; i < samples_per_slice; i++) {
-	//fft_input[i] = single_chan[i];
-	fft_input [i] = rand(gen);
-      }
-      kiss_fftr(cfg, fft_input, fft_output);
-      for (int freq_i = 0; freq_i < samples_per_slice; freq_i++) {
-	kiss_fft_cpx a = fft_output[freq_i];
-	double modulus =  pow(a.r, 2) + pow(a.i, 2);
-	if (print) {
-	  std::cout << modulus << " ";
-	}
-	//plus equals to get both channels
-	tfd(freq_i, slice_i) += modulus;
-      }
-      if (print) {
-	std::cout << "\n";
-      }
-    }
-  }
-  //std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
-  KISS_FFT_FREE(fft_input);
-  KISS_FFT_FREE(fft_output);
-  kiss_fftr_free(cfg);
-  return tfd;
-}
-
-
-MatrixXf filename_TFD_extract(std::string fn, int total_slices, int samples_per_slice, int channels) {
-  //int nfft = samples_per_slice;
-  bool is_inverse = false;
-  //number of bins fft puts things into. apparently it's the same as nfft.
-  //since nothing is placed in the upper half, divide by 2
-  //though if you want to play around with inverse fft, set to nfft
-  //int freq_chunks = nfft / 2;
-  //freq_chunks = samples_per_slice;
-  FileWvIn input;
-  input.openFile(fn);
-  kiss_fftr_cfg cfg = kiss_fftr_alloc( samples_per_slice ,is_inverse,0,0 );
-  size_t input_size = sizeof(kiss_fft_scalar) * (samples_per_slice + 1);
-  size_t output_size = sizeof(kiss_fft_cpx) * (samples_per_slice + 1);
-  kiss_fft_scalar* fft_input =(kiss_fft_scalar*)KISS_FFT_MALLOC(input_size);
-  kiss_fft_cpx* fft_output =(kiss_fft_cpx*)KISS_FFT_MALLOC(output_size);
-  bool print = false;
-  StkFrames slice(samples_per_slice, channels);
-  StkFrames single_chan(samples_per_slice, 1);
-
-  for (int i = 0 ; i < samples_per_slice; i++) {
-    fft_input[i] = 0;
-    fft_output[i] = (kiss_fft_cpx){.r = 0, .i = 0};
-  }
-  MatrixXf tfd = MatrixXf(samples_per_slice, total_slices); 
-  tfd.setZero();
-  
-  for (int slice_i = 0; slice_i < total_slices; slice_i++) {
-    input.tick(slice);
-    for (int i = 0; i < channels; i++) {
-      slice.getChannel(i, single_chan, 0);
-      for (int i = 0; i < samples_per_slice; i++) {
-	fft_input[i] = single_chan[i];
-      }
-      kiss_fftr(cfg, fft_input, fft_output);
-      for (int freq_i = 0; freq_i < samples_per_slice; freq_i++) {
-	kiss_fft_cpx a = fft_output[freq_i];
-	double modulus =  pow(a.r, 2) + pow(a.i, 2);
-	if (print) {
-	  std::cout << modulus << " ";
-	}
-	//plus equals to get both channels
-	tfd(freq_i, slice_i) += modulus;
-      }
-      if (print) {
-	std::cout << "\n";
-      }
-    }
-  }
-  //std::cout << tfd(tfd.rows() / 4, tfd.cols() - 1) << "\n";
-  KISS_FFT_FREE(fft_input);
-  KISS_FFT_FREE(fft_output);
-  kiss_fftr_free(cfg);
-  input.closeFile();
-  return tfd;
-}
-
 
 //creates a 1-dimensional gaussian filter, as an stk finite impulse response filter
 //  int filter_size = 20;
@@ -230,7 +119,7 @@ stk::Fir create_fir_from_coefs(double* coefs, int len) {
   return Fir(kernel);
 }
 
-MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
+MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
   //perform valid 1d convolution on matrix
   //or cross-corelation, planning on using symetric kernels so doesn't matter
   int res_dim;
@@ -274,19 +163,20 @@ MatrixXf one_d_convolve(MatrixXf mat, MatrixXf kern) {
 }
 
 //difference of gaussian
-MatrixXf dog(MatrixXf full, MatrixXf gauss) {
+MatrixXf dog(MatrixXf &full, MatrixXf &gauss) {
   int f_rows = full.rows();
   int f_cols = full.cols();
   int g_rows = gauss.rows();
   int g_cols = gauss.cols();
+  MatrixXf ret;
   if (f_rows == g_rows && f_cols == g_cols) {
-    return full - gauss;
+    ret = full - gauss;
   }
   else {
     MatrixXf temp = full.block((f_rows - g_rows) / 2, (f_cols - g_cols) / 2, g_rows, g_cols);
-    temp = temp - gauss;
-    return temp.cwiseAbs();
+    ret = temp - gauss;
   }
+  return ret.cwiseAbs();
 }
 
 //stands for sub nonzero-average zeroing
@@ -359,36 +249,4 @@ double snaz(list<Chunk> &many_chunks, int snazr) {
   many_chunks.assign(temp2.begin(), temp2.end());
   return nz_avg;
 }
-
-/*
-double snaz(list<ChunkMatch> &many_matches, int snazr) {
-  //may not need this but worried about breaking iterators
-  //std::list<Chunk> temp;
-  double nz_tot = 0;
-  double nz_avg = 0;
-  double val = 0;
-  int nz_count = 0;
-  list<ChunkMatch> temp1 (many_matches);
-  list<ChunkMatch> temp2;
-  for (int i = 0; i <= snazr; i++) {
-    nz_tot = 0;
-    nz_count = 0;
-    for (Chunk a_chunk : temp1) {
-      val = a_chunk.get_chunk_size();
-      if (val >= nz_avg) {
-	nz_tot += val;
-	nz_count++;
-	temp2.push_front(a_chunk);
-      }
-    }
-    if (i < snazr) {
-      nz_avg = nz_tot / nz_count;
-      temp1.assign(temp2.begin(), temp2.end());
-      temp2.erase(temp2.begin(), temp2.end());
-    }
-  }
-  many_matches.assign(temp2.begin(), temp2.end());
-  return nz_avg;
-}
-*/
 

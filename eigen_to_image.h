@@ -12,7 +12,7 @@ void write_eigen_to_file(const char* fn, Eigen::MatrixXf &mat);
 void write_chunks_to_file(std::string fn, Eigen::MatrixXi &mat);
 void write_chunks_to_file(const char* fn, Eigen::MatrixXi &mat);
 
-void write_chunks_to_file(std::string fn, std::list<Chunk> chunks, int rows, int cols);
-void write_chunks_to_file(const char* fn, std::list<Chunk> chunks, int rows, int cols);
+void write_chunks_to_file(std::string fn, std::list<Chunk> &chunks, int rows, int cols);
+void write_chunks_to_file(const char* fn, std::list<Chunk> &chunks, int rows, int cols);
 
 #endif
