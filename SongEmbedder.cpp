@@ -2,6 +2,7 @@
 #include <Eigen/Eigen>
 #include <list>
 #include <math.h>
+#include <LentPitShift.h>
 #include "SongEmbedder.h"
 #include "Chunk.h"
 #include "ChunkStats.h"
@@ -18,6 +19,7 @@ using Eigen::MatrixXi;
 using stk::FileWvIn;
 using stk::FileWvOut;
 using stk::StkFrames;
+using stk::LentPitShift;
 
 list<Chunk> make_chunks(int samples_per_slice, Song input);
 std::pair<MatrixXf, MatrixXf> filter(MatrixXf input);
@@ -27,6 +29,14 @@ list<Chunk> get_important_chunks(MatrixXi chunks, int snazr);
 MatrixXi fill_chunkify(MatrixXf &input, int thresh);
 void recurse_fill(MatrixXf &input, MatrixXi &ids, int x, int y, int cid);
 
+
+
+void time_stretch_frame(StkFrames &raw, StkFrames &stretch, double stretch_ratio);
+
+void FilterTest(int samples_per_slice, std::string fn);
+void LentPitTest(int samples_per_slice, std::string fn);
+
+void print_frame(StkFrames in);
 
 SongEmbedder::SongEmbedder(Song src, Song dst) {
   reciptor = src;
@@ -41,15 +51,17 @@ double chunkmatch_get_score_wrapper(ChunkMatch a) {
 
 void SongEmbedder::funk() {
   int samples_per_slice = 1024 * 2;
+  //FilterTest(samples_per_slice, reciptor.get_file_name());
+  //LentPitTest(samples_per_slice, reciptor.get_file_name());
+  //exit(9);
   if (reciptor.get_file_rate() == replacer.get_file_rate()) {
     list<Chunk> reciptor_chunks = make_chunks(samples_per_slice, reciptor);
     list<Chunk> replacer_chunks = make_chunks(samples_per_slice, replacer);
     list<ChunkMatch>matches = get_matches(reciptor_chunks, replacer_chunks);
-
-
     
     std::string fn = "muxed";
     output_remix(samples_per_slice, matches, fn);
+    //output_remix_alt(samples_per_slice, matches, "bombs");
     std::cout << "made it to the end!\n";
   }
   else {
@@ -79,6 +91,8 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
   list<Chunk> ret;
   ret.insert(ret.begin(), part1.begin(), part1.end());
   ret.insert(ret.begin(), part2.begin(), part2.end());
+
+  std::cout << ret.size() << " many chunk(s) extracted from " << input.get_file_name() << "\n";
 
   //std::cout << "making pictures\n";
   string bn = input.get_file_name();
@@ -167,19 +181,23 @@ list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Ch
   ChunkCompare comp (50,1,5);
   list<ChunkMatch> matches;
   ChunkMatch a_match;
+  int snazr = 1;
   std::cout << "matching sound chunks! This may take a while.\n";
-  int count = 0;
-  int tot = reciptor_chunks.size();
+  //int count = 0;
+  //int tot = reciptor_chunks.size();
   for (Chunk a_chunk : reciptor_chunks) {
     a_match = ChunkMatch(a_chunk);
     a_match.best_match_chunk(replacer_chunks, comp);
     matches.insert(matches.begin(), a_match);
-    //std::cout << "out of " << tot << " matches completed " << ++count << "\n";
   }
-  std::cout << "orig len is " << matches.size();
-  reverse_gsnaz(matches, chunkmatch_get_score_wrapper, 1);
-  std::cout <<  " rsnazed len is " << matches.size() << "\n";
   std::cout << "Done with matching!\n";
+  if (snazr > 0) {
+    std::cout << "culling bad matches\n";
+    std::cout << "orig len is " << matches.size() << "\n";
+    reverse_gsnaz(matches, chunkmatch_get_score_wrapper, snazr);
+    std::cout << "culled len is " << matches.size() << "\n";
+  }
+
   return matches;
 }
 
@@ -201,8 +219,6 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches
   FileWvOut output;
   StkFrames frame_in (samples_per_slice, channels);
   StkFrames frame_out (samples_per_slice, channels);
-  StkFrames filt_frames (samples_per_slice,1);
-  StkFrames temp_frames (samples_per_slice,1);
   StkFrames zero (0, samples_per_slice, channels);
     
   sample_src.openFile(replacer.get_file_name());
@@ -223,11 +239,12 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches
       sample_src.reset();
       //need to find time offset into other file
       //offset into chunk + start of chunk in sample_src
-      offset = (i - chunk_match.get_active_start()) + (match.get_time_center() - match.get_time_margin());
+      offset = (i - chunk_match.get_active_start()) + match.get_time_start();
       offset *= samples_per_slice;
       sample_src.addTime(offset);
       
       sample_src.tick(frame_in);
+      //filt.fft_filter_frame(frame_in, frame_out);
       filt.fir_filter_frame(frame_in, frame_out);
     }
 
@@ -241,3 +258,117 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches
   }
   output.closeFile();
 }
+
+
+
+
+//unfinished time compress version
+void SongEmbedder::output_remix_alt(int samples_per_slice, list<ChunkMatch> &matches, std::string fn) {
+  list<ChunkMatch> active_start;
+  list<ChunkMatch> active_end;
+  list<ChunkMatch> active_chunks;
+  for (ChunkMatch a_match : matches) {
+    active_start.push_front(a_match);
+    active_end.push_front(a_match);
+  }
+
+  //new sort methods, just original reciptor time
+  active_start.sort(ChunkMatch::comp_orig_start);
+  active_end.sort(ChunkMatch::comp_orig_end);
+  
+  int new_slices = reciptor.get_samples_per_channel() / samples_per_slice;
+  int channels = reciptor.get_channels();
+  float offset = -1;
+  FileWvIn sample_src;
+  FileWvOut output;
+  StkFrames frame_in (samples_per_slice, channels);
+  StkFrames frame_out (samples_per_slice, channels);
+  StkFrames zero (0, samples_per_slice, channels);
+  sample_src.openFile(replacer.get_file_name());
+  output.openFile(fn, channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
+
+  for (int i = 0; i < new_slices; i++) {
+    while(active_start.size() > 0 && active_start.front().get_active_start() <= i) {
+      active_chunks.insert(active_chunks.begin(), active_start.front());
+      active_start.pop_front();
+    }   
+    frame_out *= zero;
+    for (ChunkMatch chunk_match : active_chunks) {
+      Chunk match = chunk_match.get_match_chunk();
+      ChunkFilter filt = match.get_filter();
+      sample_src.reset();
+      Chunk orig = chunk_match.get_orig_chunk();
+      double offset_ratio =  (double)(i - orig.get_time_start()) / (orig.get_time_length());
+      offset = (offset_ratio * match.get_time_length() + match.get_time_start()) * samples_per_slice;
+      sample_src.addTime(offset);
+
+      //then, extract a variable amount of samples based on how compression of chunk
+      double next_offset_ratio =  (double)(i + 1  - orig.get_time_start()) / (orig.get_time_length());
+      double next_offset = (next_offset_ratio * match.get_time_length() + match.get_time_start()) * samples_per_slice;
+      int size1 = next_offset - offset;
+      double compression_ratio = (double)orig.get_time_length() / match.get_time_length();
+      int size2 = samples_per_slice / compression_ratio;
+      //tick size samples from sample_src at curr offset, then time stretch it
+      //result should be same size as frame_out if the correct amount of samples got correctly stretched
+    }
+
+    output.tick(frame_out);
+      
+    //remove chunks that just ended
+    while(active_end.size() > 0 && active_end.front().get_active_end() <= i) {
+      active_chunks.remove(active_end.front());
+      active_end.pop_front();
+    }
+  }
+  output.closeFile();
+}
+
+
+void FilterTest(int samples_per_slice, std::string fn) {
+  FileWvIn sample_src;
+  sample_src.openFile(fn);
+  int channels = sample_src.channelsOut();
+  FileWvOut output;
+  StkFrames frame_in (samples_per_slice, channels);
+  StkFrames frame_out (samples_per_slice, channels);
+  StkFrames filt (samples_per_slice, channels);
+  StkFrames zero (0, samples_per_slice, channels);
+  StkFrames temp (samples_per_slice, 1);
+  StkFrames temp_out (samples_per_slice, 1);
+  
+  output.openFile("filt_test.wav", channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
+  float cent = samples_per_slice / 4;
+  float marg = samples_per_slice / 100;
+  ChunkFilter filter1 (1 * cent, marg, samples_per_slice);
+  ChunkFilter filter2 (2 * cent, marg, samples_per_slice);
+  ChunkFilter filter3 (3 * cent, marg, samples_per_slice);
+  list<ChunkFilter> filters;
+  filters.push_front(filter1);
+  filters.push_front(filter2);
+  filters.push_front(filter3);
+   
+  int tMax = samples_per_slice;
+  LentPitShift lent(1, tMax);
+  lent.setShift(2.0);
+  while(!sample_src.isFinished()) {
+    frame_out *= zero;
+    filt *= zero;
+    sample_src.tick(frame_in);
+    for (ChunkFilter a_filter : filters) {
+      a_filter.fir_filter_frame(frame_in, filt);
+      frame_out += filt;
+    }
+    output.tick(frame_out);
+  }
+  output.closeFile();
+}
+
+
+void print_frame(StkFrames in) {
+  int len = in.frames();
+  for (int i = 0; i < len; i++) {
+    std::cout << in[i] << " ";
+  }
+  std::cout << "\n";
+}
+

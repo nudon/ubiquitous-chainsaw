@@ -15,7 +15,7 @@ ChunkCompare::ChunkCompare(double w1, double w2, double w3) {
 double ChunkCompare::compare(Chunk a, Chunk b) {
   double diff = 0;
   double (*func)(double , double ) = abs_diff;
-  diff += freq_center_weight * abs_log_diff(a.get_freq_center(), b.get_freq_center());
+  diff += freq_center_weight * abs_log_diff(a.get_rel_freq_center(), b.get_rel_freq_center());
   diff += freq_margin_weight * func(a.get_freq_margin(), b.get_freq_margin());
   diff += time_margin_weight * func(a.get_time_margin(), b.get_time_margin());
   

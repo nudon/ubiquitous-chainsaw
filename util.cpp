@@ -9,9 +9,6 @@ using Eigen::MatrixXi;
 using std::list;
 using namespace stk;
 
-
-
-
 MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, int channels) {
   //int nfft = samples_per_slice;
   bool is_inverse = false;
@@ -42,8 +39,8 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
     input.tick(slice);
     for (int i = 0; i < channels; i++) {
       slice.getChannel(i, single_chan, 0);
-      for (int i = 0; i < samples_per_slice; i++) {
-	fft_input[i] = single_chan[i];
+      for (int j = 0; j < samples_per_slice; j++) {
+	fft_input[j] = single_chan[j];
       }
       kiss_fftr(cfg, fft_input, fft_output);
       for (int freq_i = 0; freq_i < rows ; freq_i++) {
@@ -63,6 +60,20 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
   KISS_FFT_FREE(fft_output);
   kiss_fftr_free(cfg);
   return tfd;
+}
+
+void kiss_to_stk(kiss_fft_scalar* in, StkFrames &out) {
+  int size = out.frames();
+  for(int i = 0; i < size; i++) {
+    out[i] = in[i];
+  }
+}
+
+void stk_to_kiss(StkFrames &in, kiss_fft_scalar* out) {
+  int size = in.frames();
+  for(int i = 0; i < size; i++) {
+    out[i] = in[i];
+  }
 }
 
 //creates a 1-dimensional gaussian filter, as an stk finite impulse response filter
@@ -103,10 +114,10 @@ void make_fir_bandpass_filter(double* coefs, int taps, int freq_center, int freq
   double rel_center = (double)freq_center / max_freq;
   double rel_margin = (double)freq_margin / max_freq;
   TFIRPassTypes band = firBPF;
-  TWindowType wt = wtSINC;
-  double some_window_param = 10;
+  TWindowType wt = wtKAISER;
+  double beta = 5;
   RectWinFIR(coefs, taps, band, rel_center, rel_margin);
-  FIRFilterWindow(coefs, taps, wt, some_window_param);
+  FIRFilterWindow(coefs, taps, wt, beta);
 }
 
 stk::Fir create_fir_from_coefs(double* coefs, int len) {
@@ -214,7 +225,7 @@ double snaz(MatrixXf &filt, int snazr) {
     }
     if (i < snazr) {
       nz_avg = nz_tot / nz_count;
-      std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
+      //std::cout << "non-zero average for round " << i << " is " << nz_avg << "\n";
     }
   }
   return nz_avg;

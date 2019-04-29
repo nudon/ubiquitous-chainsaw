@@ -12,8 +12,10 @@
 #include "Chunk.h"
 #include "ChunkMatch.h"
 
-//thing with fourier transform
+//fourier transform
 Eigen::MatrixXf TFD_extract(stk::FileWvIn &input, int total_slices, int samples_per_slice, int channels);
+void kiss_to_stk(kiss_fft_scalar* in, stk::StkFrames &out);
+void stk_to_kiss(stk::StkFrames &in, kiss_fft_scalar* out);
 
 //filtering methods
 //using stk
@@ -79,7 +81,7 @@ double reverse_gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
     nz_count = 0;
     for (T a_t : temp1) {
       val = func(a_t);
-      if (val < nz_avg) {
+      if (val <= nz_avg) {
 	nz_tot += val;
 	nz_count++;
 	temp2.push_front(a_t);

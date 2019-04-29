@@ -81,8 +81,8 @@ std::list<Chunk> ChunkStats::cull_chunks(int snazr) {
   }
   //average_size = snaz(chunk_list, snazr);
   average_size = gsnaz(chunk_list, get_size_wrap, snazr);
-  std::cout << "original size was " << chunks << " culled size is " << chunk_list.size() << "\n";
-  std::cout << "average size was " << average_size << "\n";
+  //std::cout << "original size was " << chunks << " culled size is " << chunk_list.size() << "\n";
+  //std::cout << "average size was " << average_size << "\n";
   return chunk_list; 
 }
 

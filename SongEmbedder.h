@@ -23,6 +23,7 @@ class SongEmbedder{
 
   
   void output_remix(int sps,std::list<ChunkMatch> &matches, std::string fn);
+  void output_remix_alt(int sps,std::list<ChunkMatch> &matches, std::string fn);
   
 };
 

@@ -21,16 +21,19 @@ class ChunkMatch {
   ~ChunkMatch() {}
   
   //template< template <class T> class container>
-  void best_match_chunk(std::list<Chunk> many_chunks, ChunkCompare comp);
+  void best_match_chunk(std::list<Chunk> &many_chunks, ChunkCompare comp);
   int get_active_start();
   int get_active_end();
   double get_score() { return score; }
 
   Chunk get_orig_chunk() { return orig; }
   Chunk get_match_chunk() { return match; }
+  
+  static bool comp_active_start(ChunkMatch &a, ChunkMatch &b);
+  static bool comp_active_end(ChunkMatch &a, ChunkMatch &b);
 
-  static bool comp_active_start(ChunkMatch a, ChunkMatch b);
-  static bool comp_active_end(ChunkMatch a, ChunkMatch b);
+  static bool comp_orig_start(ChunkMatch &a, ChunkMatch &b);
+  static bool comp_orig_end(ChunkMatch &a, ChunkMatch &b);
 
   bool operator == (ChunkMatch other);
   
