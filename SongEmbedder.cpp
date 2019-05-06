@@ -77,10 +77,11 @@ void SongEmbedder::funk() {
 //template< template <class T> class container>
 list<Chunk> make_chunks(int samples_per_slice, Song input) {
   MatrixXf spec = input.spectrogram(samples_per_slice);
+  foobar_spec(spec);
   std::pair<MatrixXf, MatrixXf> xy_filt = filter(spec);
   MatrixXf x_filt = std::get<0>(xy_filt);
   MatrixXf y_filt = std::get<1>(xy_filt);
-  int filt_snazr = 1;
+  int filt_snazr = 2;
   int chunk_snazr = 1;
   snaz(x_filt, filt_snazr);
   snaz(y_filt, filt_snazr);
@@ -97,6 +98,7 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
   //std::cout << "making pictures\n";
   string bn = input.get_file_name();
   string post = ".png";
+  //spec = spec / 1000;
   write_eigen_to_file(bn + ".spec" + post, spec);
   write_eigen_to_file(bn + ".filX" + post, x_filt);
   write_eigen_to_file(bn + ".filY" + post, y_filt);
@@ -109,7 +111,7 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
   int ycx = y_chunks.cols();
   write_chunks_to_file(bn + ".cull_chunkX" + post, part1, xcy, xcx);
   write_chunks_to_file(bn + ".cull_chunkY" + post, part2, ycy, ycx);
-  write_chunks_to_file(bn + ".cull_chunkTOT" + post, ret, max(xcy, ycy), max(xcx, ycx));
+  //write_chunks_to_file(bn + ".cull_chunkTOT" + post, ret, max(xcy, ycy), max(xcx, ycx));
   return ret;
 }
 
@@ -178,7 +180,7 @@ std::list<Chunk> get_important_chunks(MatrixXi chunks, int snazr) {
 list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Chunk> &replacer_chunks) {
   //construct a comparer
   //weights for frequency center, frequency margin, and time maring
-  ChunkCompare comp (50,1,5);
+  ChunkCompare comp (50,1,10);
   list<ChunkMatch> matches;
   ChunkMatch a_match;
   int snazr = 1;
@@ -287,6 +289,8 @@ void SongEmbedder::output_remix_alt(int samples_per_slice, list<ChunkMatch> &mat
   sample_src.openFile(replacer.get_file_name());
   output.openFile(fn, channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
 
+  LentPitShift lent(1, samples_per_slice);
+  
   for (int i = 0; i < new_slices; i++) {
     while(active_start.size() > 0 && active_start.front().get_active_start() <= i) {
       active_chunks.insert(active_chunks.begin(), active_start.front());
@@ -302,7 +306,7 @@ void SongEmbedder::output_remix_alt(int samples_per_slice, list<ChunkMatch> &mat
       offset = (offset_ratio * match.get_time_length() + match.get_time_start()) * samples_per_slice;
       sample_src.addTime(offset);
 
-      //then, extract a variable amount of samples based on how compression of chunk
+      //then, extract a variable amount of samples
       double next_offset_ratio =  (double)(i + 1  - orig.get_time_start()) / (orig.get_time_length());
       double next_offset = (next_offset_ratio * match.get_time_length() + match.get_time_start()) * samples_per_slice;
       int size1 = next_offset - offset;
@@ -310,6 +314,13 @@ void SongEmbedder::output_remix_alt(int samples_per_slice, list<ChunkMatch> &mat
       int size2 = samples_per_slice / compression_ratio;
       //tick size samples from sample_src at curr offset, then time stretch it
       //result should be same size as frame_out if the correct amount of samples got correctly stretched
+      int size = size2;
+      StkFrames temp_in (size, channels);
+      StkFrames filt_in (size, channels);
+      sample_src.tick(temp_in);
+      
+      filt.fir_filter_frame(temp_in, filt_in);
+      reshape_chunk(filt_in, frame_out, orig, match, lent);
     }
 
     output.tick(frame_out);
@@ -363,12 +374,4 @@ void FilterTest(int samples_per_slice, std::string fn) {
   output.closeFile();
 }
 
-
-void print_frame(StkFrames in) {
-  int len = in.frames();
-  for (int i = 0; i < len; i++) {
-    std::cout << in[i] << " ";
-  }
-  std::cout << "\n";
-}
 

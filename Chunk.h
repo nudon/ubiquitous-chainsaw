@@ -1,6 +1,8 @@
 #ifndef FILE_CHUNK_SEEN
 #define FILE_CHUNK_SEEN
+#include <LentPitShift.h>
 #include "ChunkFilter.h"
+
 //#include <math.h>
 class Chunk {
  public:
@@ -52,6 +54,9 @@ class Chunk {
   
   ChunkFilter get_filter();
 
+  //void make_pit_shift() { pit = stk::LentPitShift(1, bin_size); }
+  //stk::LentPitShift &getPitShift() { return pit; }
+
   bool operator == (Chunk other);
   
  private:
@@ -62,6 +67,7 @@ class Chunk {
   int max_time;
   int bin_size;
   ChunkFilter chunk_filter;
+  //stk::LentPitShift pit;
   
 };
 

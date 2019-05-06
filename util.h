@@ -12,10 +12,19 @@
 #include "Chunk.h"
 #include "ChunkMatch.h"
 
+
+//general util
+void print_frame(stk::StkFrames in);
+
 //fourier transform
 Eigen::MatrixXf TFD_extract(stk::FileWvIn &input, int total_slices, int samples_per_slice, int channels);
+void foobar_spec(Eigen::MatrixXf &tfd);
 void kiss_to_stk(kiss_fft_scalar* in, stk::StkFrames &out);
 void stk_to_kiss(stk::StkFrames &in, kiss_fft_scalar* out);
+
+void resample_frame(stk::StkFrames &cur_frames, stk::StkFrames &new_frames);
+void reshape_chunk(stk::StkFrames &frame_in, stk::StkFrames &frame_out, Chunk &src, Chunk &shape, stk::LentPitShift &lent);
+
 
 //filtering methods
 //using stk

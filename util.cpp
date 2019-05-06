@@ -1,5 +1,6 @@
 #include <math.h>
 #include <vector>
+#include <LentPitShift.h>
 #include "util.h"
 #include "kiss_fftr.h"
 #include "FIRFilterCode.h"
@@ -22,7 +23,6 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
   size_t output_size = sizeof(kiss_fft_cpx) * (samples_per_slice + 1);
   kiss_fft_scalar* fft_input =(kiss_fft_scalar*)KISS_FFT_MALLOC(input_size);
   kiss_fft_cpx* fft_output =(kiss_fft_cpx*)KISS_FFT_MALLOC(output_size);
-  bool print = false;
   StkFrames slice(samples_per_slice, channels);
   StkFrames single_chan(samples_per_slice, 1);
 
@@ -39,20 +39,12 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
     input.tick(slice);
     for (int i = 0; i < channels; i++) {
       slice.getChannel(i, single_chan, 0);
-      for (int j = 0; j < samples_per_slice; j++) {
-	fft_input[j] = single_chan[j];
-      }
+      stk_to_kiss(single_chan, fft_input);
       kiss_fftr(cfg, fft_input, fft_output);
       for (int freq_i = 0; freq_i < rows ; freq_i++) {
 	kiss_fft_cpx a = fft_output[freq_i];
-	double modulus =  pow(a.r, 2) + pow(a.i, 2);
-	if (print) {
-	  std::cout << modulus << " ";
-	}
+	double modulus =  pow(pow(a.r, 2) + pow(a.i, 2), 2);
 	tfd(freq_i, slice_i) += modulus;
-      }
-      if (print) {
-	std::cout << "\n";
       }
     }
   }
@@ -60,6 +52,32 @@ MatrixXf TFD_extract(FileWvIn &input, int total_slices, int samples_per_slice, i
   KISS_FFT_FREE(fft_output);
   kiss_fftr_free(cfg);
   return tfd;
+}
+
+
+//data transform because my base spec output looked weird
+//used some math that foobar uses for it's visualization.
+/* 
+   original code found at g_preprocess_chunk in 
+   https://github.com/stengerh/foo_vis_spectrogram/blob/master/foo_vis_spectrogram/CSpectrogramView.cpp
+ */
+void foobar_spec(MatrixXf &tfd) {
+  float temp = -1;
+  float pow = -1;
+  float minf = tfd.minCoeff();
+  float maxf = tfd.maxCoeff();
+  float low = std::max(20 * log10(minf), -800.f);
+  float high = 20 * log10(maxf);
+  float div = 1.0 / (high - low);
+  for (int col_i = 0; col_i < tfd.cols(); col_i++) {
+    for (int row_i = 0; row_i < tfd.rows(); row_i++) {
+      temp = tfd(row_i, col_i);
+      pow = 20.0 * log10(temp);
+      temp = (pow - low) * div;
+      temp = std::min(1.0f, std::max(0.0f, temp));
+      tfd(row_i, col_i) = temp;
+    }
+  }
 }
 
 void kiss_to_stk(kiss_fft_scalar* in, StkFrames &out) {
@@ -74,6 +92,58 @@ void stk_to_kiss(StkFrames &in, kiss_fft_scalar* out) {
   for(int i = 0; i < size; i++) {
     out[i] = in[i];
   }
+}
+
+void resample_frame(StkFrames &cur_frames,StkFrames &new_frames) {
+  int cur_len = cur_frames.frames();
+  int new_len = new_frames.frames();
+  float cur_i = -1;
+  for (int new_i = 0; new_i < new_len; new_i++) {
+    cur_i = cur_len * (double)new_i / new_len;
+    new_frames[new_i] = cur_frames.interpolate(cur_i);
+  }
+}
+
+void reshape_chunk(StkFrames &frame_in, StkFrames &frame_out, Chunk &src, Chunk &shape, LentPitShift &lent) {
+  //reshape in time/frequency space to match another chunks shape
+  //change the sampling rate first to fit the time
+  //calculate how resampling changed pitch, then make/use a pitch shifter to correct to desired pitch center
+  
+  int channels = frame_in.channels();
+  int orig_size = frame_in.frames();
+  int new_size = frame_out.frames();
+
+  StkFrames temp_in (orig_size, 1);
+  StkFrames temp_out (new_size, 1);
+  StkFrames garb (new_size, 1);
+  StkFrames reshape (new_size, channels);
+
+  //forgot about my experiments with lentPitShifts
+  //there might be a delay before output starts getting output
+  //could either try repeating input, handing in a previouse frame, or see what ticking in zeros does
+  //also hand this in as an arguement since construction will be same across all func calls
+  //int tMax = new_size;
+  //LentPitShift lent(1, tMax);
+  //LentPitShift lent = src.getPitShift();
+
+  double resample_freq_scale = (double)orig_size / new_size;
+  double resampled_freq = src.get_freq_center() * resample_freq_scale;
+  double pitch_correct = shape.get_freq_center() / resampled_freq;
+
+  lent.setShift(pitch_correct);
+  //std::cout << "shift is " << pitch_correct << "\n";
+  //first step, resample at a different rate
+  for (int chan_i = 0; chan_i < channels; chan_i++) {
+    frame_in.getChannel(chan_i, temp_in, 0);
+    resample_frame(temp_in, temp_out);
+    //lent.tick(temp_out, garb);
+    //lent.tick(temp_out, garb);
+    lent.tick(temp_out);
+    //std::cout << "size is " << temp_out.frames() << "\n";
+    //print_frame(temp_out);
+    reshape.setChannel(chan_i, temp_out, 0);
+  }
+  frame_out += reshape;
 }
 
 //creates a 1-dimensional gaussian filter, as an stk finite impulse response filter
@@ -261,3 +331,12 @@ double snaz(list<Chunk> &many_chunks, int snazr) {
   return nz_avg;
 }
 
+
+
+void print_frame(StkFrames in) {
+  int len = in.frames();
+  for (int i = 0; i < len; i++) {
+    std::cout << in[i] << " ";
+  }
+  std::cout << "\n";
+}
