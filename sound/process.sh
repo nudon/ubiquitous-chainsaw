@@ -23,3 +23,4 @@ convertAll() {
 
 convertAll "mp3"
 convertAll "flac"
+convertAll "m4a"

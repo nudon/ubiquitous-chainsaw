@@ -22,7 +22,7 @@ using stk::StkFrames;
 using stk::LentPitShift;
 
 list<Chunk> make_chunks(int samples_per_slice, Song input);
-std::pair<MatrixXf, MatrixXf> filter(MatrixXf input);
+std::pair<MatrixXf, MatrixXf> filter(MatrixXf &input);
 MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range);
 list<Chunk> get_important_chunks(MatrixXi chunks, int snazr);
 
@@ -53,7 +53,6 @@ void SongEmbedder::funk() {
   int samples_per_slice = 1024 * 2;
   //FilterTest(samples_per_slice, reciptor.get_file_name());
   //LentPitTest(samples_per_slice, reciptor.get_file_name());
-  //exit(9);
   if (reciptor.get_file_rate() == replacer.get_file_rate()) {
     list<Chunk> reciptor_chunks = make_chunks(samples_per_slice, reciptor);
     list<Chunk> replacer_chunks = make_chunks(samples_per_slice, replacer);
@@ -81,28 +80,32 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
   std::pair<MatrixXf, MatrixXf> xy_filt = filter(spec);
   MatrixXf x_filt = std::get<0>(xy_filt);
   MatrixXf y_filt = std::get<1>(xy_filt);
+
   int filt_snazr = 2;
-  int chunk_snazr = 1;
+  int chunk_snazr = 2;
   snaz(x_filt, filt_snazr);
   snaz(y_filt, filt_snazr);
   MatrixXi x_chunks = fill_chunkify(x_filt, 0.0);
   MatrixXi y_chunks = fill_chunkify(y_filt, 0.0);
-  list<Chunk> part1 = get_important_chunks(x_chunks, chunk_snazr);
-  list<Chunk> part2 = get_important_chunks(y_chunks, chunk_snazr);
+  ChunkStats x_stats (x_chunks);
+  ChunkStats y_stats (y_chunks);
+  list<Chunk> part1 = x_stats.cull_chunks(chunk_snazr, CHUNK_FREQ_OPT);
+  list<Chunk> part2 = y_stats.cull_chunks(chunk_snazr, CHUNK_TIME_OPT);
   list<Chunk> ret;
   ret.insert(ret.begin(), part1.begin(), part1.end());
   ret.insert(ret.begin(), part2.begin(), part2.end());
-
-  std::cout << ret.size() << " many chunk(s) extracted from " << input.get_file_name() << "\n";
+  int tot_count = x_stats.get_chunk_count() + y_stats.get_chunk_count();
+  std::cout << tot_count << " many chunk(s) extracted from " << input.get_file_name() << "\n";
+  std::cout << ret.size() << " many chunk(s) left after culling " << input.get_file_name() << "\n";
 
   //std::cout << "making pictures\n";
+  //string bn = input.get_file_name();
+
   string bn = input.get_file_name();
   string post = ".png";
-  //spec = spec / 1000;
-  write_eigen_to_file(bn + ".spec" + post, spec);
   write_eigen_to_file(bn + ".filX" + post, x_filt);
   write_eigen_to_file(bn + ".filY" + post, y_filt);
-
+  write_eigen_to_file(bn + ".spec" + post, spec);
   write_chunks_to_file(bn + ".chunkX" + post, x_chunks);
   write_chunks_to_file(bn + ".chunkY" + post, y_chunks);
   int xcy = x_chunks.rows();
@@ -117,21 +120,21 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
 
 
 
-std::pair<MatrixXf, MatrixXf> filter(MatrixXf input) {
-  MatrixXf gauss_col = create_1d_gaussian_filter_col(16, 1, 1);
-  MatrixXf gauss_row = create_1d_gaussian_filter_row(16, 1, 1);
-  MatrixXf gaussian_blur = one_d_convolve(input, gauss_col);
-  gaussian_blur = one_d_convolve(gaussian_blur, gauss_row);
-  MatrixXf dogg = dog(input, gaussian_blur);
-  MatrixXf sobel_x (1,3);
-  MatrixXf sobel_y (3,1);
-  sobel_x << -1, 0, 1;
-  sobel_y << -1, 0, 1;
-
-  MatrixXf x_sobeled_dog = one_d_convolve(dogg, sobel_x);
-  MatrixXf y_sobeled_dog = one_d_convolve(dogg, sobel_y);
-  std::pair<MatrixXf, MatrixXf> ret(x_sobeled_dog, y_sobeled_dog);
-  return ret;
+std::pair<MatrixXf, MatrixXf> filter(MatrixXf &input) {
+  MatrixXf gauss_col = create_1d_gaussian_filter_col(15, 1, 2);
+  MatrixXf gauss_row = create_1d_gaussian_filter_row(15, 1, 2);
+  
+  
+  MatrixXf x_gauss = one_d_convolve(input, gauss_row);
+  MatrixXf y_gauss = one_d_convolve(input, gauss_col);
+  //gives x/y alligned edges
+  MatrixXf x_dog = input - x_gauss;
+  MatrixXf y_dog = input - y_gauss;
+  //smoothes edges so barely seperated chunks are joined
+  MatrixXf x_dog_smooth = one_d_convolve(x_dog, gauss_row);
+  MatrixXf y_dog_smooth = one_d_convolve(y_dog, gauss_col);
+    std::pair<MatrixXf, MatrixXf> gret(x_dog_smooth, y_dog_smooth);
+  return gret;
 }
 
 

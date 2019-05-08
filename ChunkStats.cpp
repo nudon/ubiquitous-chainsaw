@@ -4,7 +4,9 @@
 #include "util.h"
 using Eigen::MatrixXi;
 
-double get_size_wrap(Chunk);
+double get_size_wrap(Chunk a);
+double get_freq_wrap(Chunk a);
+double get_time_wrap(Chunk a);
 
 ChunkStats::ChunkStats(MatrixXi chunk_ids) {
   bin_size = chunk_ids.rows();
@@ -51,13 +53,7 @@ MatrixXi ChunkStats::make_stats(MatrixXi chunk_ids) {
   return stats;
 }
 
-std::list<Chunk> ChunkStats::cull_chunks(int snazr) {
-  //wait I don't even need the chunkids anymore 
-  
-  //thinking of returning a linked list of chunk objects
-  //because working with matrixes will probably be annoying past this point
-
-
+std::list<Chunk> ChunkStats::cull_chunks(int snazr, int opt) {
   std::list<Chunk> chunk_list;
   MatrixXi sizes = get_size();
   MatrixXi minf = get_min_freq();
@@ -80,7 +76,17 @@ std::list<Chunk> ChunkStats::cull_chunks(int snazr) {
     }
   }
   //average_size = snaz(chunk_list, snazr);
-  average_size = gsnaz(chunk_list, get_size_wrap, snazr);
+  double (*the_func)(Chunk);
+  if (opt == 0) {
+    the_func = get_size_wrap;
+  }
+  else if (opt == CHUNK_TIME_OPT) {
+    the_func = get_time_wrap;
+  }
+  else if (opt == CHUNK_FREQ_OPT) {
+    the_func = get_freq_wrap;
+  }
+  average_size = gsnaz(chunk_list, the_func, snazr);
   //std::cout << "original size was " << chunks << " culled size is " << chunk_list.size() << "\n";
   //std::cout << "average size was " << average_size << "\n";
   return chunk_list; 
@@ -88,6 +94,14 @@ std::list<Chunk> ChunkStats::cull_chunks(int snazr) {
 
 double get_size_wrap(Chunk a) {
   return a.get_chunk_size();
+}
+
+double get_freq_wrap(Chunk a) {
+  return a.get_freq_margin();
+}
+
+double get_time_wrap(Chunk a) {
+  return a.get_time_margin();
 }
 
 

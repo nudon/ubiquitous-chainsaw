@@ -119,11 +119,7 @@ void write_eigen_to_file(char* fn, MatrixXf &mat) {
   pngwriter img(cols, rows, 0, fn);
   for (int row_i = 0; row_i < rows; row_i++) {
     for (int col_i = 0; col_i < cols; col_i++) {
-      d = mat(row_i, col_i);
       v = mat(row_i, col_i);
-      if (v < d || v < 0) {
-	std::cout << v << " " << d << "\n";
-      }
       img.plot(col_i + 1, row_i + 1, v,v,v);
     }
   }

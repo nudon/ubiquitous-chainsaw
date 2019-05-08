@@ -4,7 +4,7 @@
 #include "util.h"
 #include "kiss_fftr.h"
 #include "FIRFilterCode.h"
-
+#include "eigen_to_image.h"
 using Eigen::MatrixXf;
 using Eigen::MatrixXi;
 using std::list;
@@ -200,7 +200,7 @@ stk::Fir create_fir_from_coefs(double* coefs, int len) {
   return Fir(kernel);
 }
 
-MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
+MatrixXf one_d_convolve_valid(MatrixXf &mat, MatrixXf &kern) {
   //perform valid 1d convolution on matrix
   //or cross-corelation, planning on using symetric kernels so doesn't matter
   int res_dim;
@@ -239,6 +239,107 @@ MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
   }
   if (kern_dim % 2 == 0) {
     //kernel has even dim and doesn't have a perfect center index, funky stuff may happen
+    std::cerr << "Warning, one-d-convolving with an even-length kernel\n";
+  }
+  return result;
+}
+
+MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
+  //perform valid 1d convolution on matrix
+  //or cross-corelation, planning on using symetric kernels so doesn't matter
+  int res_dim;
+  int kern_dim = -1;
+  MatrixXf temp, ref, result;
+  int d_start, d_end, d_width;
+  //reflecting edges
+  int pad = -1;
+  //fug
+  if (kern.rows() == 1) {
+    pad  = kern.cols() / 2;
+  }
+  else if (kern.cols() == 1) {
+    pad  = kern.rows() / 2;
+  }
+  int row_i = 0;
+  int col_i = 0;
+  int low_row_bound = pad;
+  int high_row_bound = mat.rows() + pad - 1;
+  int low_col_bound = pad;
+  int high_col_bound = mat.cols() + pad - 1;
+  int ref_row = -1;
+  int ref_col = -1;
+  float sum = kern.sum();
+  result = MatrixXf(mat.rows(), mat.cols());
+  result.setZero();
+  ref = MatrixXf(mat.rows() + 2 * pad, mat.cols() + 2 * pad);
+  ref.setZero();
+  bool col_region = false;
+  bool row_region = false;
+  //reflect edges
+  row_i = 0;
+  while(row_i < ref.rows()) {
+    if (row_i < low_row_bound || row_i > high_row_bound) {
+      //inside pad boundary
+      //pad things
+      ref_row = pad - row_i;
+      if (ref_row < 0) {
+	ref_row = 2 * mat.rows() - (row_i - pad) - 1;
+      }
+      row_region = true;
+    }
+    else {
+      ref_row = row_i - pad;
+      row_region = false;
+    }
+    col_i = 0;
+    while(col_i < ref.cols()) {
+      if (col_i < low_col_bound || col_i > high_col_bound) {
+	//inside pad boundary
+	//pad things
+	ref_col = pad - col_i;
+	if (ref_col < 0) {
+	  ref_col = 2 * mat.cols() - (col_i - pad) - 1;
+	}
+	col_region = true;
+      }
+      else {
+	ref_col = col_i - pad;
+	col_region = false;
+      }
+      if (col_region || row_region) {
+	ref(row_i, col_i) = mat(ref_row, ref_col);
+	col_i++;
+      }
+      else {
+	//not reflecting anything, skip some columns
+	col_i = high_col_bound + 1;
+      }
+    }
+     row_i++;
+  }
+  //fill center
+  ref.block(pad, pad, mat.rows(), mat.cols()) = mat;
+  
+  if (kern.rows() == 1) {
+    kern_dim = kern.cols();
+    for (int i = 0; i < kern_dim; i++) {
+      temp = ref.block(0,i,mat.rows(), mat.cols());
+      result += temp * (kern(0,i) / sum);
+    }
+  }
+  else if (kern.cols() == 1) {
+    kern_dim = kern.rows();
+    for (int i = 0; i < kern_dim; i++) {
+      temp = ref.block(i,0,mat.rows(), mat.cols());
+      result += temp * (kern(i, 0) / sum);
+    }
+  }
+  else {
+    std::cerr << "Warning, one-d-convolving with a 2d kernel\n";
+  }
+  if (kern_dim % 2 == 0) {
+    //kernel has even dim and doesn't have a perfect center index, funky stuff may happen
+    std::cerr << "Warning, one-d-convolving with an even-length kernel\n";
   }
   return result;
 }
