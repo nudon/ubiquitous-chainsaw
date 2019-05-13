@@ -45,19 +45,19 @@ class Chunk {
   double get_rel_freq_margin() { return get_freq_margin() / bin_size; }
 
   int get_bin_size() { return bin_size; }
-  int get_chunk_id() { return chunk_id; }
+  int get_chunk_id() const { return chunk_id; }
   int get_chunk_size() { return 4 *  get_time_margin() * get_freq_margin(); }
 
   
 
   void make_chunk_filter();
   
-  ChunkFilter get_filter();
+  ChunkFilter get_filter() { return chunk_filter; }
 
   //void make_pit_shift() { pit = stk::LentPitShift(1, bin_size); }
   //stk::LentPitShift &getPitShift() { return pit; }
 
-  bool operator == (Chunk other);
+  bool operator == (Chunk other) const;
   
  private:
   int chunk_id;

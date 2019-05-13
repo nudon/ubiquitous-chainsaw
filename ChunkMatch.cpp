@@ -5,12 +5,13 @@
 using stk::StkFrames;
 ChunkMatch::ChunkMatch(Chunk to_match) {
   orig = to_match;
+  score = std::numeric_limits<double>::infinity();
 }
 //template< template <class T> class container>
-void ChunkMatch::best_match_chunk(std::list<Chunk> &many_chunks, ChunkCompare comp) {
-  double lowest = std::numeric_limits<double>::infinity();
+void ChunkMatch::best_match_chunk(std::list<Chunk> &many_chunks, ChunkCompare &comp) {
+  double lowest = score;
   double temp = 0;
-  Chunk best_match;
+  Chunk best_match = match;
   for (Chunk b : many_chunks) {
     temp = comp.compare(orig, b);
     if (temp < lowest) {
@@ -22,9 +23,10 @@ void ChunkMatch::best_match_chunk(std::list<Chunk> &many_chunks, ChunkCompare co
     }
   }
   match = best_match;
-  score = lowest;
   match.make_chunk_filter();
+  score = lowest;
 }
+
 int ChunkMatch::get_active_start() {
   return orig.get_time_center() - match.get_time_margin();
 }
@@ -52,7 +54,18 @@ bool ChunkMatch::comp_orig_end(ChunkMatch &a, ChunkMatch &b) {
 }
 
 
-bool  ChunkMatch:: operator == (ChunkMatch other) {
-  return (get_orig_chunk() == other.get_orig_chunk() &&
-	  get_match_chunk() == other.get_match_chunk());
+
+
+int ChunkMatch::match_hash( ChunkMatch &arg) {
+  std::hash<double> hashy;
+  double n , d;
+  n = (arg.orig.get_time_start() - arg.match.get_time_end()) * (arg.orig.get_time_end() - arg.match.get_time_start());
+  //d = arg.orig.get_rel_freq_center() / arg.match.get_rel_freq_center();
+  return hashy(n);
 }
+
+bool  ChunkMatch:: operator == (const ChunkMatch other) const  {
+  return (orig == other.orig && match == other.match);
+}
+
+  

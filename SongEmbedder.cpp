@@ -1,6 +1,8 @@
 #include <iostream>
 #include <Eigen/Eigen>
 #include <list>
+#include <map>
+#include <unordered_set>
 #include <math.h>
 #include <LentPitShift.h>
 #include "SongEmbedder.h"
@@ -12,6 +14,9 @@
 
 
 using std::list;
+using std::map;
+using std::unordered_set;
+using std::pair;
 using std::string;
 using std::max;
 using Eigen::MatrixXf;
@@ -22,10 +27,12 @@ using stk::StkFrames;
 using stk::LentPitShift;
 
 list<Chunk> make_chunks(int samples_per_slice, Song input);
-std::pair<MatrixXf, MatrixXf> filter(MatrixXf &input);
+pair<MatrixXf, MatrixXf> filter(MatrixXf &input);
 MatrixXi chunkify(MatrixXf input, int vertical_range, int horizontal_range);
 list<Chunk> get_important_chunks(MatrixXi chunks, int snazr);
-
+list<ChunkMatch> best_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp);
+list<ChunkMatch> quick_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp);
+list<Chunk> get_closest_bin(map<int, list<Chunk>> bins, int start);
 MatrixXi fill_chunkify(MatrixXf &input, int thresh);
 void recurse_fill(MatrixXf &input, MatrixXi &ids, int x, int y, int cid);
 
@@ -59,6 +66,7 @@ void SongEmbedder::funk() {
     list<ChunkMatch>matches = get_matches(reciptor_chunks, replacer_chunks);
     
     std::string fn = "muxed";
+    std::cout << "outputting song\n";
     output_remix(samples_per_slice, matches, fn);
     //output_remix_alt(samples_per_slice, matches, "bombs");
     std::cout << "made it to the end!\n";
@@ -75,18 +83,23 @@ void SongEmbedder::funk() {
 
 //template< template <class T> class container>
 list<Chunk> make_chunks(int samples_per_slice, Song input) {
+  int filt_snazr = 1;
+  int chunk_snazr = 2;
+  std::cout << "Building spectrogram for " << input.get_file_name() << "\n";
   MatrixXf spec = input.spectrogram(samples_per_slice);
   foobar_spec(spec);
-  std::pair<MatrixXf, MatrixXf> xy_filt = filter(spec);
+  std::cout << "filtering spectrogram\n";
+  pair<MatrixXf, MatrixXf> xy_filt = filter(spec);
   MatrixXf x_filt = std::get<0>(xy_filt);
   MatrixXf y_filt = std::get<1>(xy_filt);
 
-  int filt_snazr = 2;
-  int chunk_snazr = 2;
+
   snaz(x_filt, filt_snazr);
   snaz(y_filt, filt_snazr);
+  std::cout << "extracting chunks from spectrogram\n";
   MatrixXi x_chunks = fill_chunkify(x_filt, 0.0);
   MatrixXi y_chunks = fill_chunkify(y_filt, 0.0);
+  std::cout << "culling chunks\n";
   ChunkStats x_stats (x_chunks);
   ChunkStats y_stats (y_chunks);
   list<Chunk> part1 = x_stats.cull_chunks(chunk_snazr, CHUNK_FREQ_OPT);
@@ -99,8 +112,6 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
   std::cout << ret.size() << " many chunk(s) left after culling " << input.get_file_name() << "\n";
 
   //std::cout << "making pictures\n";
-  //string bn = input.get_file_name();
-
   string bn = input.get_file_name();
   string post = ".png";
   write_eigen_to_file(bn + ".filX" + post, x_filt);
@@ -120,9 +131,9 @@ list<Chunk> make_chunks(int samples_per_slice, Song input) {
 
 
 
-std::pair<MatrixXf, MatrixXf> filter(MatrixXf &input) {
-  MatrixXf gauss_col = create_1d_gaussian_filter_col(15, 1, 2);
-  MatrixXf gauss_row = create_1d_gaussian_filter_row(15, 1, 2);
+pair<MatrixXf, MatrixXf> filter(MatrixXf &input) {
+  MatrixXf gauss_col = create_1d_gaussian_filter_col(15, 1, 1);
+  MatrixXf gauss_row = create_1d_gaussian_filter_row(15, 1, 1);
   
   
   MatrixXf x_gauss = one_d_convolve(input, gauss_row);
@@ -133,7 +144,7 @@ std::pair<MatrixXf, MatrixXf> filter(MatrixXf &input) {
   //smoothes edges so barely seperated chunks are joined
   MatrixXf x_dog_smooth = one_d_convolve(x_dog, gauss_row);
   MatrixXf y_dog_smooth = one_d_convolve(y_dog, gauss_col);
-    std::pair<MatrixXf, MatrixXf> gret(x_dog_smooth, y_dog_smooth);
+  pair<MatrixXf, MatrixXf> gret(x_dog_smooth, y_dog_smooth);
   return gret;
 }
 
@@ -184,28 +195,107 @@ list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Ch
   //construct a comparer
   //weights for frequency center, frequency margin, and time maring
   ChunkCompare comp (50,1,10);
-  list<ChunkMatch> matches;
-  ChunkMatch a_match;
+
   int snazr = 1;
-  std::cout << "matching sound chunks! This may take a while.\n";
-  //int count = 0;
-  //int tot = reciptor_chunks.size();
-  for (Chunk a_chunk : reciptor_chunks) {
-    a_match = ChunkMatch(a_chunk);
-    a_match.best_match_chunk(replacer_chunks, comp);
-    matches.insert(matches.begin(), a_match);
-  }
+  std::cout << "matching sound chunks!\n";
+  //list<ChunkMatch> matches = best_match(reciptor_chunks, replacer_chunks, comp);
+  list<ChunkMatch> matches = quick_match(reciptor_chunks, replacer_chunks, comp);
   std::cout << "Done with matching!\n";
   if (snazr > 0) {
     std::cout << "culling bad matches\n";
     std::cout << "orig len is " << matches.size() << "\n";
-    reverse_gsnaz(matches, chunkmatch_get_score_wrapper, snazr);
+    double avg = reverse_gsnaz(matches, chunkmatch_get_score_wrapper, snazr);
+    std::cout << "only accepted scores <= " << avg << "\n";
     std::cout << "culled len is " << matches.size() << "\n";
   }
 
   return matches;
 }
 
+list<ChunkMatch> best_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp) {
+  list<ChunkMatch> matches;
+  ChunkMatch a_match;
+  for (Chunk a_chunk : rec) {
+    a_match = ChunkMatch(a_chunk);
+    a_match.best_match_chunk(rep, comp);
+    a_match.get_match_chunk().make_chunk_filter();
+    matches.insert(matches.begin(), a_match);
+  }
+  return matches;
+}
+
+list<ChunkMatch> quick_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp) {
+  map<int, list<Chunk>> freq_cent_map;
+  map<int, list<Chunk>> freq_marg_map;
+  map<int, list<Chunk>> time_marg_map;
+  list<ChunkMatch> matches;
+  //map<int, int> 
+  int fc_ind, fm_ind, tm_ind;
+  //populate maps
+  list<Chunk> sub_list;
+  for (Chunk a_chunk : rep) {
+    fm_ind = a_chunk.get_freq_length();
+    fc_ind = int(round(2 * a_chunk.get_freq_center()));
+    tm_ind = a_chunk.get_time_length();
+    
+    freq_marg_map[fm_ind].push_front(a_chunk);
+    time_marg_map[tm_ind].push_front(a_chunk);
+    freq_cent_map[fc_ind].push_front(a_chunk);
+  }
+
+  ChunkMatch a_match;
+  for (Chunk a_chunk : rec) {
+    a_match = ChunkMatch(a_chunk);
+    fm_ind = a_chunk.get_freq_length();
+    fc_ind = int(round(2 * a_chunk.get_freq_center()));
+    tm_ind = a_chunk.get_time_length();
+
+    sub_list = freq_marg_map[fm_ind];
+    //sub_list = get_closest_bin(freq_marg_map, fm_ind);
+    a_match.best_match_chunk(sub_list, comp);
+    
+    sub_list = time_marg_map[tm_ind];
+    //sub_list = get_closest_bin(time_marg_map, tm_ind);
+    a_match.best_match_chunk(sub_list, comp);
+    
+    sub_list = freq_cent_map[fc_ind];
+    //sub_list = get_closest_bin(freq_cent_map, fc_ind);
+    a_match.best_match_chunk(sub_list, comp);
+    
+    matches.insert(matches.begin(), a_match);
+  }
+  return matches;
+}
+
+list<Chunk> get_closest_bin(map<int, list<Chunk>> bins, int start) {
+  //various bins may have zero items in them
+  //find the closest non-empty one
+  bool done = false;
+  int offset = 0;
+  int ind = -1;
+  while(!done) {
+    if (bins[start + offset].size() > 0) {
+      done = true;
+      ind = start + offset;
+    }
+    else if (start - offset >= 0) {
+      if (bins[start - offset].size() > 0) {
+	done = true;
+	ind = start - offset;
+      }
+    }
+    offset++;
+  }
+  return bins[ind];
+}
+
+
+struct cm_hash {
+  size_t operator ()(const ChunkMatch & cm) const {
+    return ChunkMatch::match_hash((ChunkMatch&)cm);
+    //return 55;
+  }
+};
 
 void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches, std::string fn) {
   list<ChunkMatch> active_start;
@@ -225,18 +315,33 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches
   StkFrames frame_in (samples_per_slice, channels);
   StkFrames frame_out (samples_per_slice, channels);
   StkFrames zero (0, samples_per_slice, channels);
+  
+  StkFrames temp (0, samples_per_slice, channels);
+  StkFrames rev_feather (0, samples_per_slice, channels);
+  StkFrames reg_feather (0, samples_per_slice, channels);
+  int feather_margin = samples_per_slice;
+  float feather_val = 0;
+  for (int i = 0; i < samples_per_slice; i++) {
+    feather_val = std::min(1.0f, (float)i / feather_margin);
+    for (int chan = 0; chan < channels; chan++) {
+      reg_feather(i, chan) = feather_val;
+      rev_feather(samples_per_slice - 1 - i, chan) = feather_val;
+    }
+  }
     
   sample_src.openFile(replacer.get_file_name());
   output.openFile("muxed.wav", channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
-  list<ChunkMatch> active_chunks;
+  //list<ChunkMatch> active_chunks;
+  unordered_set<ChunkMatch,cm_hash> active_chunks; 
   for (int i = 0; i < new_slices; i++) {
     //add newly activated chunks
-    while(active_start.size() > 0 && active_start.front().get_active_start() <= i) {
-      active_chunks.insert(active_chunks.begin(), active_start.front());
+    while(active_start.size() > 0 && active_start.front().get_active_start() == i) {
+      active_chunks.insert(active_start.front());
       active_start.pop_front();
     }   
     //take active chunks, apply filter to replacer at specified time
     //sum into some output
+
     frame_out *= zero;
     for (ChunkMatch chunk_match : active_chunks) {
       Chunk match = chunk_match.get_match_chunk();
@@ -249,15 +354,24 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches
       sample_src.addTime(offset);
       
       sample_src.tick(frame_in);
-      //filt.fft_filter_frame(frame_in, frame_out);
-      filt.fir_filter_frame(frame_in, frame_out);
+
+      temp *= zero;
+      filt.fir_filter_frame(frame_in, temp);
+      if (chunk_match.get_active_start() == i) {
+	temp *= reg_feather;
+      }
+      if (chunk_match.get_active_end() == i) {
+	temp *= rev_feather;
+      }
+      frame_out += temp;
     }
 
     output.tick(frame_out);
-      
+    
     //remove chunks that just ended
-    while(active_end.size() > 0 && active_end.front().get_active_end() <= i) {
-      active_chunks.remove(active_end.front());
+    while(active_end.size() > 0 && active_end.front().get_active_end() == i) {
+      active_chunks.erase(active_end.front());
+      //active_chunks.remove(active_end.front());
       active_end.pop_front();
     }
   }

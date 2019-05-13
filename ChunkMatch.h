@@ -4,15 +4,6 @@
 #include <list>
 #include "Chunk.h"
 #include "ChunkCompare.h"
-//for chunk matching, have 2 ideas
-//iterate over entire list, find absolute best match
-//or, create multiple linear collections, sorted by some property
-//main ones I'm thinking are frequency center, frequency margin, and time_margin
-//find closest match, and return a list of match and n adjacent chunks
-//join all subsets, find maximum match over those
-//should still implement full matching for comparison, but other method might also work
-//and be quicker
-//yeah full match takes forever even on smaller (1:30 min) songs
 
 class ChunkMatch {
  public :
@@ -21,7 +12,7 @@ class ChunkMatch {
   ~ChunkMatch() {}
   
   //template< template <class T> class container>
-  void best_match_chunk(std::list<Chunk> &many_chunks, ChunkCompare comp);
+  void best_match_chunk(std::list<Chunk> &many_chunks, ChunkCompare &comp);
   int get_active_start();
   int get_active_end();
   double get_score() { return score; }
@@ -35,7 +26,11 @@ class ChunkMatch {
   static bool comp_orig_start(ChunkMatch &a, ChunkMatch &b);
   static bool comp_orig_end(ChunkMatch &a, ChunkMatch &b);
 
-  bool operator == (ChunkMatch other);
+  static int match_hash( ChunkMatch &arg);
+
+  
+
+  bool operator == (const ChunkMatch other) const;
   
  private:
   Chunk orig;
@@ -43,6 +38,5 @@ class ChunkMatch {
   double score;
 
 };
-
 
 #endif

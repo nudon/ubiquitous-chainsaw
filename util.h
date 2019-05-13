@@ -23,6 +23,7 @@ void kiss_to_stk(kiss_fft_scalar* in, stk::StkFrames &out);
 void stk_to_kiss(stk::StkFrames &in, kiss_fft_scalar* out);
 
 void resample_frame(stk::StkFrames &cur_frames, stk::StkFrames &new_frames);
+void reverse_frame(stk::StkFrames &cur_frames, stk::StkFrames &rev_frames);
 void reshape_chunk(stk::StkFrames &frame_in, stk::StkFrames &frame_out, Chunk &src, Chunk &shape, stk::LentPitShift &lent);
 
 
@@ -80,7 +81,8 @@ double gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
 template<class T>
 double reverse_gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
   double nz_tot = 0;
-  double nz_avg = std::numeric_limits<double>::infinity();
+  const double dinf = std::numeric_limits<double>::infinity();
+  double nz_avg = dinf;
   double val = 0;
   int nz_count = 0;
   std::list<T> temp1 (many_t);
@@ -90,7 +92,7 @@ double reverse_gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
     nz_count = 0;
     for (T a_t : temp1) {
       val = func(a_t);
-      if (val <= nz_avg) {
+      if (val <= nz_avg && val != dinf) {
 	nz_tot += val;
 	nz_count++;
 	temp2.push_front(a_t);

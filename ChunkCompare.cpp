@@ -23,6 +23,10 @@ double ChunkCompare::compare(Chunk a, Chunk b) {
 }
 
 double abs_log_diff(double a, double b) {
+  if (a == 0 || b == 0) {
+    a += 0.1;
+    b += 0.1;
+  }
   return abs(log2(a) - log2(b));
 }
 

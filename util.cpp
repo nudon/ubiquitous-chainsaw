@@ -104,6 +104,18 @@ void resample_frame(StkFrames &cur_frames,StkFrames &new_frames) {
   }
 }
 
+void reverse_frame(StkFrames &cur_frames, StkFrames &rev_frames) {
+  int rev_i = -1;
+  int channels = cur_frames.channels();
+  int len = cur_frames.frames();
+  for (int i = 0; i < len; i++) {
+    rev_i = len - 1 - i;
+    for (int chan = 0; chan < channels; chan++) {
+      rev_frames(rev_i, chan) = cur_frames(i,chan);
+    }
+  }
+}
+
 void reshape_chunk(StkFrames &frame_in, StkFrames &frame_out, Chunk &src, Chunk &shape, LentPitShift &lent) {
   //reshape in time/frequency space to match another chunks shape
   //change the sampling rate first to fit the time
@@ -197,7 +209,8 @@ stk::Fir create_fir_from_coefs(double* coefs, int len) {
     val = coefs[i];
     kernel.insert(kernel.begin(), val);
   }
-  return Fir(kernel);
+  stk::Fir ret(kernel);
+  return ret;
 }
 
 MatrixXf one_d_convolve_valid(MatrixXf &mat, MatrixXf &kern) {
@@ -247,10 +260,8 @@ MatrixXf one_d_convolve_valid(MatrixXf &mat, MatrixXf &kern) {
 MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
   //perform valid 1d convolution on matrix
   //or cross-corelation, planning on using symetric kernels so doesn't matter
-  int res_dim;
   int kern_dim = -1;
   MatrixXf temp, ref, result;
-  int d_start, d_end, d_width;
   //reflecting edges
   int pad = -1;
   //fug
@@ -345,6 +356,8 @@ MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
 }
 
 //difference of gaussian
+//only really a function because gauss can be smaller
+//if using regular/same convolution, no need to use this
 MatrixXf dog(MatrixXf &full, MatrixXf &gauss) {
   int f_rows = full.rows();
   int f_cols = full.cols();
@@ -441,3 +454,5 @@ void print_frame(StkFrames in) {
   }
   std::cout << "\n";
 }
+
+

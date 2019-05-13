@@ -3,7 +3,9 @@
 #include <iostream>
 using stk::StkFrames;
 using stk::Fir;
-#define TAPS 256
+
+//underlying library for setting coeffs allows taps up to 256
+#define TAPS 60
 
 
 ChunkFilter::ChunkFilter(float freq_center, int freq_margin, int size) {
@@ -11,14 +13,10 @@ ChunkFilter::ChunkFilter(float freq_center, int freq_margin, int size) {
   center = freq_center;
   margin = freq_margin;
   tot_size = size;
-  int taps = 60;
-  //was getting heap-corruption like behavior
-  //seems to have been through coefs
-  //give it a constant size so if 
-  double coefs[taps];
+  double coefs[TAPS];
 
-  make_fir_bandpass_filter(coefs, taps, freq_center, freq_margin, tot_size);
-  fir_filter = create_fir_from_coefs(coefs, taps);
+  make_fir_bandpass_filter(coefs, TAPS, freq_center, freq_margin, tot_size);
+  fir_filter = create_fir_from_coefs(coefs, TAPS);
   //std::cout << fir_filter << "\n";
 }
 
@@ -66,9 +64,6 @@ int ChunkFilter::fir_filter_multi(StkFrames &input, StkFrames &output) {
   for (int i = 0; i < channels; i++) {
     fir_filter.tick(input, temp_frames, i, 0);
     filt.setChannel(i, temp_frames, 0);
-    //output.getChannel(i, frame_out, 0);
-    //frame_out += temp_frames;
-    //output.setChannel(i, frame_out, 0);
   }
   output += filt;
   return ret;
