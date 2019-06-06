@@ -38,12 +38,14 @@ void recurse_fill(MatrixXf &input, MatrixXi &ids, int x, int y, int cid);
 
 
 
-void time_stretch_frame(StkFrames &raw, StkFrames &stretch, double stretch_ratio);
 
-void FilterTest(int samples_per_slice, std::string fn);
-void LentPitTest(int samples_per_slice, std::string fn);
+void test_spec_filter();
+void test_sound_filter(int samples_per_slice, std::string fn);
+
 
 void print_frame(StkFrames in);
+
+void test_filter();
 
 SongEmbedder::SongEmbedder(Song src, Song dst) {
   reciptor = src;
@@ -59,7 +61,6 @@ double chunkmatch_get_score_wrapper(ChunkMatch a) {
 void SongEmbedder::funk() {
   int samples_per_slice = 1024 * 2;
   //FilterTest(samples_per_slice, reciptor.get_file_name());
-  //LentPitTest(samples_per_slice, reciptor.get_file_name());
   if (reciptor.get_file_rate() == replacer.get_file_rate()) {
     list<Chunk> reciptor_chunks = make_chunks(samples_per_slice, reciptor);
     list<Chunk> replacer_chunks = make_chunks(samples_per_slice, replacer);
@@ -84,66 +85,73 @@ void SongEmbedder::funk() {
 //template< template <class T> class container>
 list<Chunk> make_chunks(int samples_per_slice, Song input) {
   int filt_snazr = 1;
-  int chunk_snazr = 2;
+  int chunk_snazr = 1;
   std::cout << "Building spectrogram for " << input.get_file_name() << "\n";
   MatrixXf spec = input.spectrogram(samples_per_slice);
   foobar_spec(spec);
   std::cout << "filtering spectrogram\n";
   pair<MatrixXf, MatrixXf> xy_filt = filter(spec);
-  MatrixXf x_filt = std::get<0>(xy_filt);
-  MatrixXf y_filt = std::get<1>(xy_filt);
+  MatrixXf time_edges = std::get<0>(xy_filt);
+  MatrixXf freq_edges = std::get<1>(xy_filt);
 
 
-  snaz(x_filt, filt_snazr);
-  snaz(y_filt, filt_snazr);
+  snaz(time_edges, filt_snazr);
+  snaz(freq_edges, filt_snazr);
   std::cout << "extracting chunks from spectrogram\n";
-  MatrixXi x_chunks = fill_chunkify(x_filt, 0.0);
-  MatrixXi y_chunks = fill_chunkify(y_filt, 0.0);
+  MatrixXi time_chunks = fill_chunkify(time_edges, 0.0);
+  MatrixXi freq_chunks = fill_chunkify(freq_edges, 0.0);
+  //carry on
   std::cout << "culling chunks\n";
-  ChunkStats x_stats (x_chunks);
-  ChunkStats y_stats (y_chunks);
-  list<Chunk> part1 = x_stats.cull_chunks(chunk_snazr, CHUNK_FREQ_OPT);
-  list<Chunk> part2 = y_stats.cull_chunks(chunk_snazr, CHUNK_TIME_OPT);
+  ChunkStats time_stats (time_chunks);
+  ChunkStats freq_stats (freq_chunks);
+  list<Chunk> part1 = time_stats.cull_chunks(chunk_snazr, CHUNK_TIME_OPT);
+  list<Chunk> part2 = freq_stats.cull_chunks(chunk_snazr, CHUNK_FREQ_OPT);
   list<Chunk> ret;
   ret.insert(ret.begin(), part1.begin(), part1.end());
   ret.insert(ret.begin(), part2.begin(), part2.end());
-  int tot_count = x_stats.get_chunk_count() + y_stats.get_chunk_count();
+  int tot_count = time_stats.get_chunk_count() + freq_stats.get_chunk_count();
   std::cout << tot_count << " many chunk(s) extracted from " << input.get_file_name() << "\n";
   std::cout << ret.size() << " many chunk(s) left after culling " << input.get_file_name() << "\n";
 
   //std::cout << "making pictures\n";
   string bn = input.get_file_name();
   string post = ".png";
-  write_eigen_to_file(bn + ".filX" + post, x_filt);
-  write_eigen_to_file(bn + ".filY" + post, y_filt);
+  write_eigen_to_file(bn + ".time_edges" + post, time_edges);
+  write_eigen_to_file(bn + ".freq_edges" + post, freq_edges);
   write_eigen_to_file(bn + ".spec" + post, spec);
-  write_chunks_to_file(bn + ".chunkX" + post, x_chunks);
-  write_chunks_to_file(bn + ".chunkY" + post, y_chunks);
-  int xcy = x_chunks.rows();
-  int xcx = x_chunks.cols();
-  int ycy = y_chunks.rows();
-  int ycx = y_chunks.cols();
-  write_chunks_to_file(bn + ".cull_chunkX" + post, part1, xcy, xcx);
-  write_chunks_to_file(bn + ".cull_chunkY" + post, part2, ycy, ycx);
-  //write_chunks_to_file(bn + ".cull_chunkTOT" + post, ret, max(xcy, ycy), max(xcx, ycx));
+  write_chunks_to_file(bn + ".time_chunks" + post, time_chunks);
+  write_chunks_to_file(bn + ".freq_chunks" + post, freq_chunks);
+  write_chunks_to_file(bn + ".time_chunks_culled" + post, part1, time_chunks.rows(), time_chunks.cols());
+  write_chunks_to_file(bn + ".freq_chunks_culled" + post, part2, freq_chunks.rows(), freq_chunks.cols());
   return ret;
 }
 
-
-
 pair<MatrixXf, MatrixXf> filter(MatrixXf &input) {
-  MatrixXf gauss_col = create_1d_gaussian_filter_col(15, 1, 1);
-  MatrixXf gauss_row = create_1d_gaussian_filter_row(15, 1, 1);
-  
-  
+  //gauss col is a collunm vec, row is a row vec
+  int gauss_col_dim = 33;
+  int gauss_row_dim = 17;
+  double div = 9.0;
+  //the stddev is roughly set with div
+  //only tested with gauss dims around ~3-100
+  //going with higher divs seems to have the gradient fall of to zero sooner
+  // div = 9 gives an approximate 1->0 gradient from center to edge
+  // div = 4 gives an approximate 1->0.5 gradient from center to edge
+  MatrixXf gauss_col = create_1d_gaussian_filter_col(gauss_col_dim, 1, ceil(gauss_col_dim * gauss_col_dim / div));
+  MatrixXf gauss_row = create_1d_gaussian_filter_row(gauss_row_dim, 1, ceil(gauss_row_dim * gauss_row_dim / div));
+  write_eigen_to_file("gauss_col.png", gauss_col);
+  write_eigen_to_file("gauss_row.png", gauss_row);
+  //x gauss is image blurred horizontally, y is image blurred vertically
   MatrixXf x_gauss = one_d_convolve(input, gauss_row);
   MatrixXf y_gauss = one_d_convolve(input, gauss_col);
-  //gives x/y alligned edges
+
+  //extract difference of gaussian
   MatrixXf x_dog = input - x_gauss;
   MatrixXf y_dog = input - y_gauss;
+  
   //smoothes edges so barely seperated chunks are joined
-  MatrixXf x_dog_smooth = one_d_convolve(x_dog, gauss_row);
-  MatrixXf y_dog_smooth = one_d_convolve(y_dog, gauss_col);
+  //x_dog picked out vertical edges, so smooth vertically to join. vice versa for y and horizontal
+  MatrixXf x_dog_smooth = one_d_convolve(x_dog, gauss_col);
+  MatrixXf y_dog_smooth = one_d_convolve(y_dog, gauss_row);
   pair<MatrixXf, MatrixXf> gret(x_dog_smooth, y_dog_smooth);
   return gret;
 }
@@ -371,7 +379,6 @@ void SongEmbedder::output_remix(int samples_per_slice, list<ChunkMatch> &matches
     //remove chunks that just ended
     while(active_end.size() > 0 && active_end.front().get_active_end() == i) {
       active_chunks.erase(active_end.front());
-      //active_chunks.remove(active_end.front());
       active_end.pop_front();
     }
   }
@@ -452,7 +459,43 @@ void SongEmbedder::output_remix_alt(int samples_per_slice, list<ChunkMatch> &mat
 }
 
 
-void FilterTest(int samples_per_slice, std::string fn) {
+void test_spec_filter() {
+  string post = "_test.png";
+  int samp_rows = 7;
+  int samp_cols = 21;
+  MatrixXf sample(samp_rows, samp_cols);
+  sample.setZero();
+  sample.row((samp_rows - 1) / 2) = MatrixXf::Constant(1, samp_cols, 1);
+  sample.col((samp_cols - 1) / 2) = MatrixXf::Constant(samp_rows, 1, 1);
+
+  write_eigen_to_file("samples" + post, sample);
+  //gauss col is a collunm vec, row is a row vec
+  MatrixXf gauss_col = create_1d_gaussian_filter_col(5, 1, 1);
+  MatrixXf gauss_row = create_1d_gaussian_filter_row(5, 1, 1);
+  write_eigen_to_file("gausscol" + post, gauss_col);
+  write_eigen_to_file("gaussrow" + post, gauss_row);
+
+  //x gauss is image blurred horizontally, y is image blurred vertically
+  MatrixXf x_gauss = one_d_convolve(sample, gauss_row);
+  MatrixXf y_gauss = one_d_convolve(sample, gauss_col);
+  write_eigen_to_file("x_gauss" + post, x_gauss);
+  write_eigen_to_file("y_gauss" + post, y_gauss);
+  
+
+  MatrixXf x_dog = (sample - x_gauss);
+  MatrixXf y_dog = (sample - y_gauss);
+  write_eigen_to_file("x_dog" + post, x_dog);
+  write_eigen_to_file("y_dog" + post, y_dog);
+  
+  //smoothes edges so barely seperated chunks are joined
+  MatrixXf x_dog_smooth = one_d_convolve(x_dog, gauss_col);
+  MatrixXf y_dog_smooth = one_d_convolve(y_dog, gauss_row);
+  write_eigen_to_file("x_dog_smooth" + post, x_dog_smooth);
+  write_eigen_to_file("y_dog_smooth" + post, y_dog_smooth);
+}
+
+
+void test_sound_filter(int samples_per_slice, std::string fn) {
   FileWvIn sample_src;
   sample_src.openFile(fn);
   int channels = sample_src.channelsOut();
@@ -475,9 +518,6 @@ void FilterTest(int samples_per_slice, std::string fn) {
   filters.push_front(filter2);
   filters.push_front(filter3);
    
-  int tMax = samples_per_slice;
-  LentPitShift lent(1, tMax);
-  lent.setShift(2.0);
   while(!sample_src.isFinished()) {
     frame_out *= zero;
     filt *= zero;

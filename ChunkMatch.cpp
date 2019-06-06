@@ -58,7 +58,7 @@ bool ChunkMatch::comp_orig_end(ChunkMatch &a, ChunkMatch &b) {
 
 int ChunkMatch::match_hash( ChunkMatch &arg) {
   std::hash<double> hashy;
-  double n , d;
+  double n;
   n = (arg.orig.get_time_start() - arg.match.get_time_end()) * (arg.orig.get_time_end() - arg.match.get_time_start());
   //d = arg.orig.get_rel_freq_center() / arg.match.get_rel_freq_center();
   return hashy(n);

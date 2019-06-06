@@ -175,14 +175,14 @@ stk::Fir create_1d_gaussian_filter(int length, double amplitude, double center, 
 }
 
 MatrixXf create_1d_gaussian_filter_col(int length, double amplitude, double stddev) {
-  MatrixXf kern (1, length);
+  MatrixXf kern (length, 1);
   float val = 0;
   double exp = 0;
-  double center = (double)length / 2;
+  double center = (length - 1) / 2;
   for (int i = 0; i < length; i++) {
     exp = -1 * pow(i - center, 2) / stddev;
     val = amplitude * pow(M_E, exp);
-    kern(0,i) = val;
+    kern(i,0) = val;
   }
   return kern;;
 }
@@ -258,13 +258,11 @@ MatrixXf one_d_convolve_valid(MatrixXf &mat, MatrixXf &kern) {
 }
 
 MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
-  //perform valid 1d convolution on matrix
-  //or cross-corelation, planning on using symetric kernels so doesn't matter
+  //perform same 1d convolution on matrix
   int kern_dim = -1;
   MatrixXf temp, ref, result;
   //reflecting edges
   int pad = -1;
-  //fug
   if (kern.rows() == 1) {
     pad  = kern.cols() / 2;
   }
@@ -330,18 +328,18 @@ MatrixXf one_d_convolve(MatrixXf &mat, MatrixXf &kern) {
   }
   //fill center
   ref.block(pad, pad, mat.rows(), mat.cols()) = mat;
-  
+
   if (kern.rows() == 1) {
     kern_dim = kern.cols();
     for (int i = 0; i < kern_dim; i++) {
-      temp = ref.block(0,i,mat.rows(), mat.cols());
+      temp = ref.block(pad,i,mat.rows(), mat.cols());
       result += temp * (kern(0,i) / sum);
     }
   }
   else if (kern.cols() == 1) {
     kern_dim = kern.rows();
     for (int i = 0; i < kern_dim; i++) {
-      temp = ref.block(i,0,mat.rows(), mat.cols());
+      temp = ref.block(i,pad,mat.rows(), mat.cols());
       result += temp * (kern(i, 0) / sum);
     }
   }

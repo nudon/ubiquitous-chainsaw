@@ -76,7 +76,7 @@ std::list<Chunk> ChunkStats::cull_chunks(int snazr, int opt) {
     }
   }
   //average_size = snaz(chunk_list, snazr);
-  double (*the_func)(Chunk);
+  double (*the_func)(Chunk) = NULL;
   if (opt == 0) {
     the_func = get_size_wrap;
   }
