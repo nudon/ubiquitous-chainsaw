@@ -81,12 +81,18 @@ std::list<Chunk> ChunkStats::cull_chunks(int snazr, int opt) {
     the_func = get_size_wrap;
   }
   else if (opt == CHUNK_TIME_OPT) {
-    the_func = get_time_wrap;
-  }
-  else if (opt == CHUNK_FREQ_OPT) {
     the_func = get_freq_wrap;
   }
+  else if (opt == CHUNK_FREQ_OPT) {
+    the_func = get_time_wrap;
+  }
   average_size = gsnaz(chunk_list, the_func, snazr);
+
+  for (Chunk ac : chunk_list) {
+    //printf("chunk size is %f\n", ac.get_freq_margin());
+  }
+  //printf("avg size was %f\n", average_size);
+  //exit(3);
   //std::cout << "original size was " << chunks << " culled size is " << chunk_list.size() << "\n";
   //std::cout << "average size was " << average_size << "\n";
   return chunk_list; 
@@ -101,7 +107,7 @@ double get_freq_wrap(Chunk a) {
 }
 
 double get_time_wrap(Chunk a) {
-  return a.get_time_margin();
+  return (double)a.get_time_length() / a.get_freq_length();
 }
 
 

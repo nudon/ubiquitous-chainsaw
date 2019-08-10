@@ -15,7 +15,11 @@ int main(int argc, char* args[]) {
   }
   Song a (song1);
   Song b (song2);
-  SongEmbedder embeder (a, b);
+  int samples_per_slice = 1024 * 2;
+  int edge_snazr = 1;
+  int chunk_snazr = 3;
+  int match_snazr = 1;
+  SongEmbedder embeder (a, b, samples_per_slice, edge_snazr, chunk_snazr, match_snazr);
   embeder.funk();
   return 0;
 }
