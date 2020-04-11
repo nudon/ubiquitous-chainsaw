@@ -55,6 +55,7 @@ class Chunk {
 
   static bool  comp_chunk_freq(Chunk& a, Chunk& b) { return a.get_freq_center() < b.get_freq_center(); }
 
+
   void make_chunk_filter();
   
   ChunkFilter get_filter() { return chunk_filter; }

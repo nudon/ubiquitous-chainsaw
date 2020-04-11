@@ -16,6 +16,7 @@ int main(int argc, char* args[]) {
   Song a (song1);
   Song b (song2);
   int samples_per_slice = 1024 * 2;
+
   int edge_snazr = 2;
   int chunk_snazr = 1;
   int match_snazr = 1;
