@@ -54,8 +54,6 @@ bool ChunkMatch::comp_orig_end(ChunkMatch &a, ChunkMatch &b) {
 }
 
 
-
-
 int ChunkMatch::match_hash( ChunkMatch &arg) {
   std::hash<double> hashy;
   double n;

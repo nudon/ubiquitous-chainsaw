@@ -19,7 +19,8 @@ class Song {
   int get_file_rate() { return file_rate; }
   const std::string get_file_name() { return (const std::string)file_name;}
   Eigen::MatrixXf spectrogram(int samples_per_slice);
-  
+  std::list<Chunk> make_chunks(int samples_per_slice, int edge_snazr, int chunk_snazr);
+  void test_chunk_grouping(int samples_per_slice, int edge_snazr, int chunk_snazr);
   
  private:
   std::string file_name;

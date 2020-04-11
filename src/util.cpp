@@ -133,10 +133,6 @@ void reshape_chunk(StkFrames &frame_in, StkFrames &frame_out, Chunk &src, Chunk 
   //forgot about my experiments with lentPitShifts
   //there might be a delay before output starts getting output
   //could either try repeating input, handing in a previouse frame, or see what ticking in zeros does
-  //also hand this in as an arguement since construction will be same across all func calls
-  //int tMax = new_size;
-  //LentPitShift lent(1, tMax);
-  //LentPitShift lent = src.getPitShift();
 
   double resample_freq_scale = (double)orig_size / new_size;
   double resampled_freq = src.get_freq_center() * resample_freq_scale;
@@ -148,10 +144,7 @@ void reshape_chunk(StkFrames &frame_in, StkFrames &frame_out, Chunk &src, Chunk 
   for (int chan_i = 0; chan_i < channels; chan_i++) {
     frame_in.getChannel(chan_i, temp_in, 0);
     resample_frame(temp_in, temp_out);
-    //lent.tick(temp_out, garb);
-    //lent.tick(temp_out, garb);
     lent.tick(temp_out);
-    //std::cout << "size is " << temp_out.frames() << "\n";
     //print_frame(temp_out);
     reshape.setChannel(chan_i, temp_out, 0);
   }
@@ -414,8 +407,6 @@ double snaz(MatrixXf &filt, int snazr) {
 }
 
 double snaz(list<Chunk> &many_chunks, int snazr) {
-  //may not need this but worried about breaking iterators
-  //std::list<Chunk> temp;
   double nz_tot = 0;
   double nz_avg = 0.0;
   double val = 0;

@@ -17,20 +17,16 @@ ChunkFilter::ChunkFilter(float freq_center, int freq_margin, int size) {
 
   make_fir_bandpass_filter(coefs, TAPS, freq_center, freq_margin, tot_size);
   fir_filter = create_fir_from_coefs(coefs, TAPS);
-  //std::cout << fir_filter << "\n";
 }
 
 
 StkFrames ChunkFilter::fir_filter_frame(StkFrames &input) {
-  //apply fir_filter to input
-
   int channels = input.channels();
   int samples = input.frames();
   StkFrames filtered (0,samples, channels);
-  //copy input to filtered
-  filtered += input;
+  //filtered += input;
   for (int i = 0; i < channels; i++) {
-    fir_filter.tick(filtered, i);
+    filtered.setChannel(i, fir_filter.tick(input, i), 0);
   }
   return filtered;
 }
@@ -45,8 +41,6 @@ int ChunkFilter::fir_filter_frame(StkFrames &input, StkFrames &output) {
     std::cerr << "filter input and output have different sizes\n";
     ret = 2;
   }
-  //apply fir_filter to input
-
   if (ret == 0) {
     ret = fir_filter_multi(input,output);
   }

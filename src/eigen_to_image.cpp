@@ -85,12 +85,13 @@ void write_chunks_to_file(const char* fn, std::list<Chunk> &chunks, int rows, in
   mat.setZero();
   int val;
   int x, y, xl, yl;
+  int count = 0;
   for (Chunk a_chunk : chunks) {
     val = a_chunk.get_chunk_id();
     x = a_chunk.get_time_center() - a_chunk.get_time_margin();
     y = a_chunk.get_freq_center() - a_chunk.get_freq_margin();
-    xl = a_chunk.get_time_margin() * 2;
-    yl = a_chunk.get_freq_margin() * 2;
+    xl = a_chunk.get_time_length();
+    yl = a_chunk.get_freq_length();
     mat.block(y,x, yl, xl) = MatrixXi::Constant(yl, xl, val);
   }
   write_chunks_to_file(fn, mat);
@@ -113,9 +114,7 @@ void write_eigen_to_file(char* fn, MatrixXf &mat) {
   #ifdef PICTURE
   int rows = mat.rows();
   int cols = mat.cols();
-  double d = 0;
   float v = 0;
-  int p = 0;
   pngwriter img(cols, rows, 0, fn);
   for (int row_i = 0; row_i < rows; row_i++) {
     for (int col_i = 0; col_i < cols; col_i++) {

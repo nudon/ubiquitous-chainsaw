@@ -16,7 +16,6 @@ public :
   ChunkStats(Eigen::MatrixXi chunk_ids);
   ~ChunkStats();
 
-  //would be nice to make these read-only
   int get_chunk_count() { return stats.rows() - 1; }
   Eigen::MatrixXi get_size() {  return stats.col(chunk_size_i); }
   Eigen::MatrixXi get_min_freq() {  return stats.col(min_freq_i); }
