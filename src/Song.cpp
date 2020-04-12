@@ -22,7 +22,7 @@ list<Chunk> group_chunks(list<Chunk> &chunks);
 void foobar(list<Chunk>& chunks);
 double chunk_ratio(Chunk& a, Chunk& b);
 void freq_grouper(list<Chunk>& group);
-void chain_build(list<Chunk>& group, list<Chunk>& chain, int pos, double ratio, double tolerance);
+void chain_build(list<Chunk>& group, list<Chunk*>& chain, int pos, double ratio, double tolerance);
 
 Song::Song(std::string fn) {
   file_name = fn;
@@ -224,7 +224,7 @@ list<Chunk> group_chunks(list<Chunk>& chunks) {
   //instead of a constant, could be the average distance between adjacent elements in center_sorted list
   double tolerance = 5;
   int group_id = 0;
-  for (Chunk &aChunk : temp) {
+  for (Chunk& aChunk : temp) {
     if ( std::abs(aChunk.get_time_center() - center) > tolerance) {
       //new group
       group_id++;
@@ -238,7 +238,7 @@ list<Chunk> group_chunks(list<Chunk>& chunks) {
     center = center_sum / center_count;
   }
   printf("Created %d groups out of %ld chunks\n", group_id, chunks.size());
-  //foobar(temp);
+  foobar(temp);
   return temp;
   
 }
@@ -248,21 +248,22 @@ list<Chunk> group_chunks(list<Chunk>& chunks) {
 //split chunks into groups where the fn * group_freq = fn+1
 void foobar(list<Chunk>& chunks) {
   int max_id = -1;
-  for (Chunk c : chunks) {
+  for (Chunk& c : chunks) {
     max_id = max(c.get_chunk_id(), max_id);
   }
   
-  list<Chunk> temp(chunks);
-  temp.sort(Chunk::comp_chunk_id);
+  chunks.sort(Chunk::comp_chunk_id);
 
   int curr_id = 0;
+  list<Chunk> freq_groups;
   list<Chunk> group;
-  for (Chunk c : temp) {
+  for (Chunk& c : chunks) {
     if (c.get_chunk_id() != curr_id) {
       //start of new time chunk
       //do something with previouse, completed chunks
       if (group.size() > 1) {
 	freq_grouper(group);
+	freq_groups.splice(freq_groups.begin(), group);
       }
       //end
       group.clear();
@@ -271,66 +272,82 @@ void foobar(list<Chunk>& chunks) {
     else {
       group.push_front(c);
     }
-
   }
+  chunks = freq_groups;
 }
 
 double chunk_ratio(Chunk& a, Chunk& b) {
-  if (a.get_freq_center() == 0) {
-    printf("Error, ratio code is wack because of a zero freq center\n");
-    return 0.0;
-  }
-  //return = b.get_freq_center() / a.get_freq_center();
-  return b.get_rel_freq_center() / a.get_rel_freq_center();
+  return (b.get_freq_center() + 0.5) / (a.get_freq_center() + 0.5);
 }
 
-//split group into smaller groups where fn * group_c = fn+1 for each item in the sub group
 void freq_grouper(list<Chunk>& group) {
+  printf("Group is %ld big \n", group.size());
   group.sort(Chunk::comp_chunk_freq);
-  //fun part
 
   int base_count = 0;
   int memb_count = 0;
-  double tolerance = 2 / group.front().get_bin_size();
-  for (Chunk base : group) {
-    
-    for (Chunk memb: group) {
+  double tolerance = 0.05;
+  list<Chunk> all_chains;
+  list<Chunk*> chain;
+  for (Chunk& base : group) {
+    for (Chunk& memb: group) {
       if (memb_count > base_count) {
-	list<Chunk> chain;
-	chain.push_back(base);
-	chain.push_back(memb);
+	chain.push_back(&base);
+	chain.push_back(&memb);
 	chain_build(group, chain, memb_count, chunk_ratio(base, memb), tolerance);
-	//have a chain, probably toss if size == 2
 	if (chain.size() > 2) {
 	  printf("Built a chain of size %ld \n", chain.size());
+	  for (Chunk *link : chain) {
+	    Chunk temp = *link;
+	    //need a way of making chian id's
+	    temp.set_chunk_id(1);
+	    all_chains.push_back(*link);
+	  }
 	}
+	chain.clear();
       }
       memb_count++;
     }
     base_count++;
   }
+  group = all_chains;
 }
 
-void chain_build(list<Chunk>& group, list<Chunk>& chain, int pos, double ratio, double tolerance) {
+//continues building a chain  where f(n+1)/f(n) = ratio
+//tolerance is a percentile tolerance for the ratio
+//builds up multiple continuations for the original chain than only returns the largest chain
+void chain_build(list<Chunk>& group, list<Chunk*>& chain, int pos, double ratio, double tolerance) {
   int idx = 0;
   Chunk prev_chunk;
   double cur_ratio = 0;
-  for (Chunk c: group) {
-    if (idx == pos) {
-      prev_chunk = c;
-    }
-    if (idx > pos) {
-      cur_ratio = chunk_ratio(prev_chunk, c);
-      //comp ratio of last_chunk:memb, if close to ratio add memb to chain
-      //and call chain_build on memb
-      if ( cur_ratio - ratio > tolerance ) {
-	//break;
+  unsigned long max = chain.size();
+  list<Chunk*> ret = chain;
+  list<list<Chunk*>> collec;
+  for (Chunk& c: group) {
+    if (idx >= pos) {
+      if (idx == pos) {
+	prev_chunk = c;
       }
-      if ( abs(cur_ratio - ratio) < tolerance) {
-	chain.push_back(c);
-	chain_build(group, chain, idx, ratio, tolerance);
+      else {
+	cur_ratio = chunk_ratio(prev_chunk, c);
+	if ( cur_ratio > ratio * (1 + tolerance)) {
+	  break;
+	}
+	if ( abs(cur_ratio - ratio) < ratio * tolerance ) {
+	  list<Chunk*> aChain = chain;
+	  aChain.push_back(&c);
+	  chain_build(group, aChain, idx, ratio, tolerance);
+	  collec.push_back(aChain);
+	}
       }
     }
     idx++;
   }
+  for (list<Chunk*> aChain : collec) {
+    if (aChain.size() > max) {
+      ret = aChain;
+      max = aChain.size();
+    }
+  }
+  chain = ret;
 }
