@@ -34,11 +34,16 @@ class Chunk {
   float get_freq_margin() { return (max_freq - min_freq) / 2.0; }
   float get_time_margin() { return (max_time - min_time) / 2.0; }
 
+  
+
   int get_time_length() { return max_time - min_time + 1; }
   int get_freq_length() { return max_freq - min_freq + 1; }
   
-  int get_time_start() { return std::round(get_time_center() - get_time_margin()); }
-  int get_time_end() { return std::round(get_time_center() + get_time_margin()); }
+  int get_time_start() { return min_time; }
+  int get_time_end() { return max_time; }
+
+  int get_freq_start() { return min_freq; }
+  int get_freq_end() { return max_freq; }
 
   double get_rel_freq_center() { return get_freq_center() / bin_size; }
   double get_rel_freq_margin() { return get_freq_margin() / bin_size; }
@@ -51,6 +56,10 @@ class Chunk {
 
   static bool comp_time_center(Chunk& a, Chunk& b) { return a.get_time_center() < b.get_time_center(); }
 
+  static bool comp_time_start(Chunk& a, Chunk& b) { return a.get_time_start() < b.get_time_start(); }
+
+  static bool comp_time_end(Chunk& a, Chunk& b) { return a.get_time_end() < b.get_time_end(); }
+  
   static bool  comp_chunk_id(Chunk& a, Chunk& b) { return a.get_chunk_id() < b.get_chunk_id(); }
 
   static bool  comp_chunk_freq(Chunk& a, Chunk& b) { return a.get_freq_center() < b.get_freq_center(); }

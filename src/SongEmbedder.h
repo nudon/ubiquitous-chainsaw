@@ -18,6 +18,7 @@ class SongEmbedder{
 
   void funk();
   void extract(Song &s);
+  void output_remix(std::list<ChunkMatch> &matches, std::string fn);
   
  private:
   Song reciptor;
@@ -31,8 +32,6 @@ class SongEmbedder{
   //Eigen::MatrixXf spectrogram(int samples_per_slice);
   std::list<ChunkMatch> get_matches(std::list<Chunk> &reciptor_chunks, std::list<Chunk> &replacer_chunks);
 
-  
-  void output_remix(std::list<ChunkMatch> &matches, std::string fn);
   void normal_filt(ChunkMatch& chunk_match, stk::FileWvIn &sample_src, stk::StkFrames &frame_in, stk::StkFrames &out, int i);
   void alt_filt(ChunkMatch& chunk_match, stk::FileWvIn &sample_src, stk::StkFrames &out, int i, stk::LentPitShift &lent);
 

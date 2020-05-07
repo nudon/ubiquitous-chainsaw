@@ -23,7 +23,8 @@ IHILLS_OBJECTS = $(IHILLS_DIR)FIRFilterCode.o $(IHILLS_DIR)FFTCode.o
 
 PNGWRITER_PLEASE =  -lpng -L./png/ -lPNGwriter
 
-MY_OBJECTS = driver.o Chunk.o ChunkCompare.o ChunkMatch.o ChunkStats.o Song.o SongEmbedder.o ChunkFilter.o  util.o 
+MY_OBJECTS = driver.o Chunk.o ChunkCompare.o ChunkMatch.o ChunkStats.o Song.o SongEmbedder.o ChunkFilter.o  util.o ChunkGroup.o ChunkGroupMatch.o ChunkGroupCompare.o SoundPatch.o
+
 EXT_OBJECTS = $(KISSFFT_OBJECTS) $(IHILLS_OBJECTS)
 ALLOBJ = $(MY_OBJECTS) $(EXT_OBJECTS)
 
@@ -59,8 +60,10 @@ $(IHILLS_OBJECTS):
 $(SRCDIR)%.o : $(SRCDIR)%.cpp
 	$(CC) $(COMP_FLAGS) $(TOT_PATH) -c -o $@ $< 
 clean:
-	cd $(KISSFFT_DIR) && make clean
-	cd $(IHILLS_DIR) && make clean                  	
 	cd $(SRC_DIR) && rm -f *.o $(TARGET)
 
 
+deep_clean:
+	cd $(SRC_DIR) && rm -f *.o $(TARGET)
+	cd $(KISSFFT_DIR) && make clean
+	cd $(IHILLS_DIR) && make clean      

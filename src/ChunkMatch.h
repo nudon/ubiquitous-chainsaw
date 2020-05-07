@@ -19,7 +19,11 @@ class ChunkMatch {
 
   Chunk get_orig_chunk() { return orig; }
   Chunk get_match_chunk() { return match; }
-  
+
+  static std::list<ChunkMatch> self_match(std::list<Chunk>&rec);
+  static std::list<ChunkMatch> best_match(std::list<Chunk>&rec, std::list<Chunk> &rep, ChunkCompare& comp);
+  static std::list<ChunkMatch> quick_match(std::list<Chunk>&rec, std::list<Chunk> &rep, ChunkCompare& comp);
+ 
   static bool comp_active_start(ChunkMatch &a, ChunkMatch &b);
   static bool comp_active_end(ChunkMatch &a, ChunkMatch &b);
 
@@ -36,7 +40,6 @@ class ChunkMatch {
   Chunk orig;
   Chunk match;
   double score;
-
 };
 
 #endif

@@ -1,5 +1,4 @@
 #include "Chunk.h"
-#include <iostream>
 
 void Chunk::make_chunk_filter() {
   chunk_filter = ChunkFilter(get_freq_center(), get_freq_margin(),get_bin_size());

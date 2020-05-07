@@ -26,8 +26,6 @@ using stk::StkFrames;
 using stk::LentPitShift;
 
 
-list<ChunkMatch> best_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp);
-list<ChunkMatch> quick_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp);
 int get_closest_bin_index(map<int, list<Chunk>> bins, int start);
 
 
@@ -72,7 +70,7 @@ list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Ch
   ChunkCompare comp (50,1,10);
 
   std::cout << "matching sound chunks!\n";
-  list<ChunkMatch> matches = quick_match(reciptor_chunks, replacer_chunks, comp);
+  list<ChunkMatch> matches = ChunkMatch::quick_match(reciptor_chunks, replacer_chunks, comp);
   std::cout << "Done with matching!\n";
   if (match_snazr > 0) {
     std::cout << "culling bad matches\n";
@@ -83,91 +81,6 @@ list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Ch
   }
 
   return matches;
-}
-
-//iterates over all chunks for matches
-list<ChunkMatch> best_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp) {
-  list<ChunkMatch> matches;
-  ChunkMatch a_match;
-  for (Chunk a_chunk : rec) {
-    a_match = ChunkMatch(a_chunk);
-    a_match.best_match_chunk(rep, comp);
-    a_match.get_match_chunk().make_chunk_filter();
-    matches.insert(matches.begin(), a_match);
-  }
-  return matches;
-}
-
-//iterates over chunks which has at least one identical stat for matches
-list<ChunkMatch> quick_match(list<Chunk>&rec, list<Chunk> &rep, ChunkCompare& comp) {
-  map<int, list<Chunk>> freq_cent_map;
-  map<int, list<Chunk>> time_marg_map;
-  list<ChunkMatch> matches;
-  int fc_ind, tm_ind, temp;
-  
-  //populate maps
-  list<Chunk> sub_list;
-  for (Chunk a_chunk : rep) {
-    fc_ind = int(round(2 * a_chunk.get_freq_center()));
-    tm_ind = a_chunk.get_time_length();
-    
-    time_marg_map[tm_ind].push_front(a_chunk);
-    freq_cent_map[fc_ind].push_front(a_chunk);
-  }
-
-  ChunkMatch a_match;
-  map<int, int> closest_freq_cent;
-  map<int, int> closest_time_marg;
-  
-  for (Chunk a_chunk : rec) {
-    a_match = ChunkMatch(a_chunk);
-    
-    fc_ind = int(round(2 * a_chunk.get_freq_center()));
-    tm_ind = a_chunk.get_time_length();
-
-    if (closest_freq_cent.count(fc_ind) == 0) {
-      temp = get_closest_bin_index(freq_cent_map, fc_ind);
-      closest_freq_cent.insert(std::pair<int,int>(fc_ind, temp));
-    }
-    fc_ind = closest_freq_cent[fc_ind];
-
-    if (closest_time_marg.count(tm_ind) == 0) {
-      temp = get_closest_bin_index(time_marg_map, tm_ind);
-      closest_time_marg.insert(std::pair<int,int>(tm_ind, temp));
-    }
-    tm_ind = closest_time_marg[fc_ind];
-    
-    sub_list = time_marg_map[tm_ind];
-    //a_match.best_match_chunk(sub_list, comp);
-    
-    sub_list = freq_cent_map[fc_ind];
-    a_match.best_match_chunk(sub_list, comp);
-    
-    matches.insert(matches.begin(), a_match);
-  }
-  return matches;
-}
-
-int get_closest_bin_index(map<int, list<Chunk>> bins, int start) {
-  //various bins may have zero items in them
-  //find the closest non-empty one
-  bool done = false;
-  int offset = 0;
-  int ind = -1;
-  while(!done) {
-    if (bins.count(start + offset) == 1) {
-      done = true;
-      ind = start + offset;
-    }
-    else if (start - offset >= 0) {
-      if (bins.count(start - offset) == 1) {
-	done = true;
-	ind = start - offset;
-      }
-    }
-    offset++;
-  }
-  return ind;
 }
 
 
@@ -243,8 +156,10 @@ void SongEmbedder::output_remix(list<ChunkMatch> &matches, std::string fn) {
       
       frame_out += temp;
     }
-
-    output.tick(frame_out);
+    //skips sections of silence from start and end of song
+    if (active_start.size() != matches.size() && active_end.size() != 0) {
+      output.tick(frame_out);
+    }
     
     while(active_end.size() > 0 && active_end.front().get_active_end() == i) {
       active_chunks.erase(active_end.front());
@@ -256,18 +171,11 @@ void SongEmbedder::output_remix(list<ChunkMatch> &matches, std::string fn) {
 
 void SongEmbedder::normal_filt(ChunkMatch& chunk_match, FileWvIn &sample_src, StkFrames &frame_in, StkFrames &out, int i) {
   Chunk match = chunk_match.get_match_chunk();
-  ChunkFilter filt = match.get_filter();
-  int offset = (i - chunk_match.get_active_start()) + match.get_time_start();
-  offset *= samples_per_slice;
-  sample_src.reset();
-  sample_src.addTime(offset);
-  
-  sample_src.tick(frame_in);
-  
-  //filt.fir_filter_frame(frame_in, out);
-  filt.fir_filter_frame(frame_in);
-  out += frame_in;
+  int frame_n = (i - chunk_match.get_active_start()) + match.get_time_start();
+  fetch_frame(frame_n, samples_per_slice, sample_src, frame_in);
+  filter_frame(match, frame_in, out);
 }
+
 
 void SongEmbedder::alt_filt(ChunkMatch& chunk_match, FileWvIn &sample_src, StkFrames &out, int i, LentPitShift &lent)  {
   int channels = sample_src.channelsOut();;

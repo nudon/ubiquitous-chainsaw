@@ -11,9 +11,13 @@
 #include <Eigen/Dense>
 #include "Chunk.h"
 #include "ChunkMatch.h"
+#include "ChunkGroup.h"
 
 
 //general util
+double abs_log_diff(double a, double b);
+double abs_diff(double a, double b);
+double square_diff(double a, double b);
 void print_frame(stk::StkFrames in);
 
 //fourier transform
@@ -22,6 +26,9 @@ void foobar_spec(Eigen::MatrixXf &tfd);
 void kiss_to_stk(kiss_fft_scalar* in, stk::StkFrames &out);
 void stk_to_kiss(stk::StkFrames &in, kiss_fft_scalar* out);
 
+//frame manipulation
+void fetch_frame(int frame_n, int samples_per_slice, stk::FileWvIn& wav, stk::StkFrames& out);
+void filter_frame(Chunk& c, stk::StkFrames& in, stk::StkFrames& out);
 void resample_frame(stk::StkFrames &cur_frames, stk::StkFrames &new_frames);
 void reverse_frame(stk::StkFrames &cur_frames, stk::StkFrames &rev_frames);
 void reshape_chunk(stk::StkFrames &frame_in, stk::StkFrames &frame_out, Chunk &src, Chunk &shape, stk::LentPitShift &lent);
@@ -32,12 +39,16 @@ void reshape_chunk(stk::StkFrames &frame_in, stk::StkFrames &frame_out, Chunk &s
 void make_fir_bandpass_filter(double* coefs, int taps, int freq_center, int freq_margin,  int max_freq);
 stk::Fir create_fir_from_coefs(double* coefs, int len);
 stk::Fir create_1d_gaussian_filter(int length, double amplitude, double center, double stddev);
-//using eigen
 
+//using eigen
 Eigen::MatrixXf create_1d_gaussian_filter_col(int length, double amplitude, double stddev);
 Eigen::MatrixXf create_1d_gaussian_filter_row(int length, double amplitude, double stddev);
 Eigen::MatrixXf one_d_convolve(Eigen::MatrixXf &mat, Eigen::MatrixXf &kern);
 Eigen::MatrixXf dog(Eigen::MatrixXf &full, Eigen::MatrixXf &gauss);
+
+//chunk grouping methods
+void output_groups(std::list<Chunk>& chunks, int samples_per_slice, std::string fn);
+std::list<ChunkGroup> group_chunks(std::list<Chunk>& pool);
 
 //chunking functions
 double snaz(Eigen::MatrixXf &filt, int snazr);
