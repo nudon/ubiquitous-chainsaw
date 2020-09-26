@@ -117,7 +117,7 @@ void fetch_frame(int frame_n, int samples_per_slice, FileWvIn& wav, StkFrames& o
 void filter_frame(Chunk& c, StkFrames& in, StkFrames& out) {
   ChunkFilter filt = c.get_filter();
   //filt.fir_filter_frame(in, out);
-  filt.fir_filter_frame(in);
+  filt.fir_filter_frame(in, in);
   out += in;
 }
 
@@ -539,7 +539,7 @@ list<Chunk> time_grouper(list<Chunk>& chunks) {
     aChunk.set_chunk_id(group_id);
     center = center_sum / center_count;
   }
-  printf("Created %d groups out of %ld chunks\n", group_id, chunks.size());
+  //printf("Created %d groups out of %ld chunks\n", group_id, chunks.size());
   return temp;
 }
 
@@ -581,7 +581,7 @@ double chunk_ratio(Chunk& a, Chunk& b) {
 
 static int chain_id = 1;
 list<ChunkGroup> build_freq_groups(list<Chunk>& group) {
-  printf("Group is %ld big \n", group.size());
+  //printf("Group is %ld big \n", group.size());
   group.sort(Chunk::comp_chunk_freq);
 
   int base_count = 0;
@@ -599,8 +599,8 @@ list<ChunkGroup> build_freq_groups(list<Chunk>& group) {
 	rat = chunk_ratio(base, memb);
 	chain_build(group, chain, memb_count, rat, tolerance);
 	if (chain.size() > 2) {
-	  printf("Built a chain of size %ld \n", chain.size());
-	  printf("Ratio for chain is %f\n", rat);
+	  //printf("Built a chain of size %ld \n", chain.size());
+	  //printf("Ratio for chain is %f\n", rat);
 	  for (Chunk *link : chain) {
 	    Chunk temp = *link;
 	    //need a way of making chian id's

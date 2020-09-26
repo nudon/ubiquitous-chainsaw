@@ -7,14 +7,16 @@
 
 class ChunkFilter {
  public:
-  ChunkFilter() {}
+  ChunkFilter() { center = -1; margin = -1; tot_size = -1;}
   ChunkFilter(float freq_center, int freq_margin, int tot_size);
   ~ChunkFilter() {}
 
-  stk::StkFrames fir_filter_frame(stk::StkFrames &input);
   int fir_filter_frame(stk::StkFrames &input, stk::StkFrames &output);
-  stk::StkFrames fft_filter_frame(stk::StkFrames &input);
   int fft_filter_frame(stk::StkFrames &input, stk::StkFrames &output);
+
+  float get_center() { return center; }
+  int get_margin() {return margin; }
+  int get_size() { return tot_size; }
 
  private:
   float center;

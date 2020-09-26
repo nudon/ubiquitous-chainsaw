@@ -8,7 +8,6 @@
 
 #include "SongEmbedder.h"
 #include "Chunk.h"
-#include "ChunkMatch.h"
 #include "util.h"
 
 
@@ -38,31 +37,36 @@ SongEmbedder::SongEmbedder(Song src, Song dst, int sps, int edge_r, int chunk_r,
   match_snazr = match_r;  
 }
 
-double chunkmatch_get_score_wrapper(ChunkMatch a) {
+double chunkmatch_get_score_wrapper(ChunkMatch& a) {
   return a.get_score();
 }
 
+double chunkgroupmatch_get_score_wrapper(ChunkGroupMatch& a) {
+  return a.get_score();
+}
+
+list<SoundPatch> SongEmbedder::individual_sound_patches(list<Chunk>& res, list<Chunk>& src) {
+  list<ChunkMatch> matches = get_matches(res, src);
+  list<SoundPatch> ret;
+  for (ChunkMatch& m : matches) {
+    ret.push_back(SoundPatch(m, replacer));
+  }
+  return ret;
+}
 
 
-void SongEmbedder::funk() {
-  if (reciptor.get_file_rate() == replacer.get_file_rate()) {
-    list<Chunk> reciptor_chunks = reciptor.make_chunks(samples_per_slice, edge_snazr, chunk_snazr);
-    list<Chunk> replacer_chunks = replacer.make_chunks(samples_per_slice, edge_snazr, chunk_snazr);
-    list<ChunkMatch>matches = get_matches(reciptor_chunks, replacer_chunks);
-    
-    std::string fn = "muxed.wav";
-    std::cout << "outputting song\n";
-    output_remix(matches, fn);
-    //output_remix_alt(samples_per_slice, matches, "muxed_alt.wav");
-    std::cout << "completed output\n";
+list<SoundPatch> SongEmbedder::group_sound_patches(list<Chunk>& res, list<Chunk>& src) {
+  
+  list<ChunkGroup> res_pool = group_chunks(res);
+  printf("For result chunks, put %lu chunks into %lu groups\n", res.size(), res_pool.size());
+  list<ChunkGroup> src_pool = group_chunks(src);
+  printf("For source chunks, put %lu chunks into %lu groups\n", src.size(), src_pool.size());
+  list<ChunkGroupMatch> matches = get_matches(res_pool, src_pool);
+  list<SoundPatch> ret;
+  for (ChunkGroupMatch& m : matches) {
+    ret.push_back(SoundPatch(m, replacer));
   }
-  else {
-    //ERROR
-    //would have to do weird stuff to work with this
-    //because the different sampling rates would manifest in fft
-    //would have the frequency bins of both spectrograms not line up
-    std::cerr << "unable to mix files, sample rates are different, please use ffmpeg or alternative software to convert songs to same sample rate\n"; 
-  }
+  return ret;
 }
 
 list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Chunk> &replacer_chunks) {
@@ -83,6 +87,59 @@ list<ChunkMatch> SongEmbedder::get_matches(list<Chunk> &reciptor_chunks, list<Ch
   return matches;
 }
 
+list<ChunkGroupMatch> SongEmbedder::get_matches(list<ChunkGroup> &res, list<ChunkGroup>& src) {
+  //weights for frequency center, frequency margin, and time marin
+  ChunkGroupCompare comp (3,9,1);
+
+  std::cout << "matching chunk groups!\n";
+  list<ChunkGroupMatch> matches = ChunkGroupMatch::best_match(res, src, comp);
+  std::cout << "Done with matching!\n";
+  if (match_snazr > 0) {
+    std::cout << "culling bad matches\n";
+    std::cout << "orig len is " << matches.size() << "\n";
+    double avg = reverse_gsnaz(matches, chunkgroupmatch_get_score_wrapper, match_snazr);
+    std::cout << "only accepted scores <= " << avg << "\n";
+    std::cout << "culled len is " << matches.size() << "\n";
+  }
+
+  return matches;
+}
+
+
+
+void SongEmbedder::funk() {
+  if (reciptor.get_file_rate() == replacer.get_file_rate()) {
+    list<Chunk> reciptor_chunks = reciptor.make_chunks(samples_per_slice, edge_snazr, chunk_snazr);
+    list<Chunk> replacer_chunks = replacer.make_chunks(samples_per_slice, edge_snazr, chunk_snazr);
+    
+    std::string fn = "muxed.wav";
+    bool useSoundPatch = true;
+    bool useGroupMatch = true;
+    if (useSoundPatch) {
+      list<SoundPatch> patches;
+      if (useGroupMatch) {
+	patches = group_sound_patches(reciptor_chunks, replacer_chunks);
+      }
+      else {
+	patches = individual_sound_patches(reciptor_chunks, replacer_chunks);
+      } 
+      output_remix(patches, fn);
+    }
+    else {
+      list<ChunkMatch>matches = get_matches(reciptor_chunks, replacer_chunks);
+      output_remix(matches, fn);
+    }
+    //output_remix_alt(samples_per_slice, matches, "muxed_alt.wav");
+    std::cout << "completed output\n";
+  }
+  else {
+    //ERROR
+    //would have to do weird stuff to work with this
+    //because the different sampling rates would manifest in fft
+    //would have the frequency bins of both spectrograms not line up
+    std::cerr << "unable to mix files, sample rates are different, please use ffmpeg or alternative software to convert songs to same sample rate\n"; 
+  }
+}
 
 struct cm_hash {
   size_t operator ()(const ChunkMatch & cm) const {
@@ -192,6 +249,100 @@ void SongEmbedder::alt_filt(ChunkMatch& chunk_match, FileWvIn &sample_src, StkFr
   StkFrames temp_in (size, channels);
   sample_src.tick(temp_in);
      
-  filt.fir_filter_frame(temp_in);
+  filt.fir_filter_frame(temp_in, temp_in);
   reshape_chunk(temp_in, out, orig, match, lent);
+}
+
+static bool sound_p_act_start_wrap(SoundPatch* a, SoundPatch* b) {
+  return SoundPatch::comp_active_start(*a,*b);
+}
+
+static bool sound_p_act_end_wrap(SoundPatch* a, SoundPatch* b) {
+  return SoundPatch::comp_active_end(*a,*b);
+}
+
+struct sp_hash {
+  size_t operator ()(const SoundPatch* sp) const {
+    return SoundPatch::patch_hash(*sp);
+  }
+};
+
+void SongEmbedder::output_remix(list<SoundPatch>& patches, std::string fn) {
+  std::cout << "outputting song\n";
+  list<SoundPatch*> active_start;
+  list<SoundPatch*> active_end;
+  unordered_set<SoundPatch*,sp_hash> active_patches; 
+  for (SoundPatch& p : patches) {
+    active_start.push_front(&p);
+    active_end.push_front(&p);
+  }
+  
+  active_start.sort(sound_p_act_start_wrap);
+  active_end.sort(sound_p_act_end_wrap);
+  
+  int new_slices = reciptor.get_samples_per_channel() / samples_per_slice;
+  int channels = reciptor.get_channels();
+
+  FileWvOut output;
+  StkFrames frame_in (samples_per_slice, channels);
+  StkFrames frame_out (samples_per_slice, channels);
+  StkFrames zero (0, samples_per_slice, channels);
+  StkFrames temp (0, samples_per_slice, channels);
+
+  LentPitShift lent(1, samples_per_slice);
+  
+  StkFrames rev_feather (0, samples_per_slice, channels);
+  StkFrames reg_feather (0, samples_per_slice, channels);
+  int feather_margin = samples_per_slice;
+  float feather_val = 0;
+  for (int i = 0; i < samples_per_slice; i++) {
+    feather_val = std::min(1.0f, (float)i / feather_margin);
+    for (int chan = 0; chan < channels; chan++) {
+      reg_feather(i, chan) = feather_val;
+      rev_feather(samples_per_slice - 1 - i, chan) = feather_val;
+    }
+  }
+    
+  output.openFile(fn, channels, stk::FileWrite::FILE_WAV, stk::Stk::STK_SINT16);
+  
+
+  for (int i = 0; i < new_slices; i++) {
+    while(active_start.size() > 0 && active_start.front()->get_active_start() <= i) {
+      if (active_start.front()->get_active_start() == i) {
+	active_patches.insert(active_start.front());
+	active_start.pop_front();
+      }
+      else if (active_start.front()->get_active_start() < 0) {
+	//odd case, happens when song matches a chunk which is long enough and close enough to start
+	//that it has a negative start time.
+	//just tossing it away for now
+	active_start.pop_front();
+      }
+    }   
+
+    frame_out *= zero;
+    for (SoundPatch* p : active_patches) {
+      temp *= zero;
+
+      p->tick_out(i, temp);
+
+      if (p->get_active_start() == i) {
+	temp *= reg_feather;
+      }
+      if (p->get_active_end() == i) {
+	temp *= rev_feather;
+      }
+      frame_out += temp;
+    }
+    //skips sections of silence from start and end of song
+    if (active_start.size() != patches.size() && active_end.size() != 0) {
+      output.tick(frame_out);
+    }
+    
+    while(active_end.size() > 0 && active_end.front()->get_active_end() == i) {
+      active_patches.erase(active_end.front());
+      active_end.pop_front();
+    }
+  }
+  output.closeFile();
 }

@@ -56,7 +56,7 @@ double snaz(Eigen::MatrixXf &filt, int snazr);
 //generic sub-non-zero average zeroing
 //though it's not really zeroing because you are removing things from a list
 template<class T>
-double gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
+double gsnaz(std::list<T>& many_t, double (*func)(T), int snazr) {
   double nz_tot = 0;
   double nz_avg = 0;
   double val = 0;
@@ -90,7 +90,7 @@ double gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
 //super non-zero average zeroing? same acronym as sub variant
 //just add a reverse in the name
 template<class T>
-double reverse_gsnaz(std::list<T> &many_t, double (*func)(T), int snazr) {
+double reverse_gsnaz(std::list<T>& many_t, double (*func)(T&), int snazr) {
   double nz_tot = 0;
   const double dinf = std::numeric_limits<double>::infinity();
   double nz_avg = dinf;

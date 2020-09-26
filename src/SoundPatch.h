@@ -15,12 +15,17 @@ class SoundPatch {
   ~SoundPatch() {};
 
   int get_length() { return end_time - start_time + 1; }
+  int get_active_start() { return start_time; }
+  int get_active_end() { return end_time; } 
+  
   
   //time_i is time index in song output, 
   void tick_out(int time_i, stk::StkFrames& out);
+  
+  static bool comp_active_start(SoundPatch &a, SoundPatch &b);
+  static bool comp_active_end(SoundPatch &a, SoundPatch &b);
 
-  static bool comp_active_start(ChunkMatch &a, ChunkMatch &b);
-  static bool comp_active_end(ChunkMatch &a, ChunkMatch &b);
+  static int patch_hash(const SoundPatch &arg);
   
  private :
   int start_time;
@@ -30,6 +35,6 @@ class SoundPatch {
   //i is a direct index to the stkframes
   void get_frame(int i, stk::StkFrames& out);
   
-};
+  };
 
 #endif

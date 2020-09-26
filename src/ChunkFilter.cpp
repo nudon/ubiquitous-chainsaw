@@ -20,17 +20,6 @@ ChunkFilter::ChunkFilter(float freq_center, int freq_margin, int size) {
 }
 
 
-StkFrames ChunkFilter::fir_filter_frame(StkFrames &input) {
-  int channels = input.channels();
-  int samples = input.frames();
-  StkFrames filtered (0,samples, channels);
-  //filtered += input;
-  for (int i = 0; i < channels; i++) {
-    filtered.setChannel(i, fir_filter.tick(input, i), 0);
-  }
-  return filtered;
-}
-
 int ChunkFilter::fir_filter_frame(StkFrames &input, StkFrames &output) {
   int ret = 0;
   if (input.channels() != output.channels()) {
